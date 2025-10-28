@@ -914,6 +914,25 @@ class PhysicsMethods:
     def solar_elevation(self):
         '''Solar elevation at present time and position of active elements.'''
         return solar_elevation(self.time, self.elements.lon, self.elements.lat)
+    
+    def shortwave_radiation_at_depth(self, shortwave_surface, depth=0, water_type=3):
+        '''Vertical shortwave radiation profile from https://www.myroms.org/wiki/Jwtype'''
+
+        if water_type < 1 or water_type > 5:
+            raise ValueError('water_type variable must be a number between 1 and 5')
+        
+        Jerlov_water_type=np.array([
+            [0.35, 23.00, 0.58],
+            [0.60, 20.00, 0.62],
+            [1.00, 17.00, 0.67],
+            [1.50, 14.00, 0.77],
+            [1.40, 7.90, 0.78]
+        ])   #[mu1, mu2, r1]
+
+        Qdown = shortwave_surface * (Jerlov_water_type[water_type-1,2] * np.exp(depth / Jerlov_water_type[water_type-1,0]) +
+                                    (1 - Jerlov_water_type[water_type-1, 2]) * np.exp(depth / Jerlov_water_type[water_type-1, 1]))
+        
+        return Qdown
 
 def wind_drag_coefficient(windspeed):
     '''Large and Pond (1981), J. Phys. Oceanog., 11, 324-336.'''
