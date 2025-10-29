@@ -109,13 +109,14 @@ class MyElementDrift(OceanDrift):
                 'level': CONFIG_LEVEL_ADVANCED}
             })
         """
+        if self.get_config('deac:variable') not in self.required_variables:
+            raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables.\n Add it with "OceanDrift.required_variables.update".')
     
     def deac(self):
 
         indices = []
 
-        print(self.environment.sea_water_temperature)
-        #if self.get_config('deac:variable') in self.environment.variables:
+
 
     """
     def deac(self):

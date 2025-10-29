@@ -14,7 +14,7 @@ o.add_reader(reader_netCDF_CF_generic.Reader('https://thredds.met.no/thredds/dod
 #o.set_config('general:premature_deactivation', 'exposure')
 #o.set_config('general:deactivation_exposure', 'simple_minmax_exposure')
 
-o.set_config('general:deac', 'shortwave_minmax')
+o.set_config('general:deac', True)
 
 
 
@@ -22,8 +22,8 @@ o.set_config('drift:vertical_mixing', True)
 max = 999
 min = -999
 
-o.set_config('general:deac_max', max)
-o.set_config('general:deac_min', min)
+o.set_config('deac:max', max)
+o.set_config('deac:min', min)
 o.set_config('vertical_mixing:timestep', 60.) # seconds
 
 time = datetime(2025, 10, 25, 12)
