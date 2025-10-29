@@ -92,6 +92,7 @@ class MyElementDrift(OceanDrift):
                             'enum': ['hard_minmax', 'exposure'],
                             'level': CONFIG_LEVEL_ADVANCED},
             'deac:health_drain': {'type': 'float',
+                                  'units': 'None',
                                   'default': 100,
                                   'description': 'Value to subtract from 100 each time step particle is outside of threshold. Deactivates particle at 0.',
                                   'min': 0,
@@ -99,8 +100,8 @@ class MyElementDrift(OceanDrift):
                                   'level': CONFIG_LEVEL_ADVANCED}
         })
 
-        if self.get_config('deac:variable') not in self.required_variables:
-            raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables.\n Add it with "OceanDrift.required_variables.update".')
+        if self.get_config('deac:variable') not in self.required_variables or self.get_config('deac:variable') not in self.elements:
+            raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables or element variables.\n Add it with "OceanDrift.required_variables.update".')
     
     def deac(self):
 
@@ -185,4 +186,3 @@ class MyElementDrift(OceanDrift):
         self.vertical_advection()
         if self.get_config('general:deac') is True:
             self.deac()
-
