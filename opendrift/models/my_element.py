@@ -42,6 +42,8 @@ class MyElementDrift(OceanDrift):
             'fallback': 50, 'skip_if': ['drift:vertical_mixing', 'is', False]},
         'sea_floor_depth_below_sea_level': {'fallback': 10000},
         'land_binary_mask': {'fallback': None},
+        'sea_water_temperature': {'fallback': 10, 'profiles': True},
+        'sea_water_salinity': {'fallback': 34, 'profiles': True},
         'net_downward_shortwave_flux_at_sea_water_surface': {'fallback': 0}
       }
 
@@ -112,7 +114,7 @@ class MyElementDrift(OceanDrift):
 
         indices = []
 
-        print(self.environment)
+        print(self.environment.sea_water_temperature)
         #if self.get_config('deac:variable') in self.environment.variables:
 
     """
