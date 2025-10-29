@@ -90,7 +90,13 @@ class MyElementDrift(OceanDrift):
                             'default': 'hard_minmax',
                             'description': 'Deactivation method',
                             'enum': ['hard_minmax', 'exposure'],
-                            'level': CONFIG_LEVEL_ADVANCED}
+                            'level': CONFIG_LEVEL_ADVANCED},
+            'deac:health_drain': {'type': 'float',
+                                  'default': 100,
+                                  'description': 'Value to subtract from 100 each time step particle is outside of threshold. Deactivates particle at 0.',
+                                  'min': 0,
+                                  'max': 100,
+                                  'level': CONFIG_LEVEL_ADVANCED}
         })
 
         if self.get_config('deac:variable') not in self.required_variables:
@@ -98,19 +104,17 @@ class MyElementDrift(OceanDrift):
     
     def deac(self):
 
-        indices = []
-        
-        if self.get_config('deac:method') is 'hard_minmax':
-            indices = [el < self.get_config('deac:min') 
-                       or el > self.get_config('deac:max') 
-                       for el in self.environment[self.get_config('deac:variable')]]
+        deac_indices = []
 
+        health_indices = [el < self.get_config('deac:min') 
+                            or el > self.get_config('deac:max')
+                            for el in self.environment[self.get_config('deac:variable')]]
+        self.elements.health[health_indices == np.True_] -= self.get_config('deac:health_drain')
 
-        elif self.get_config('deac:method') is 'exposure':
-            pass
+        deac_indices = [el <= 0 for el in self.elements.health]            
 
-        if len(indices) > 0:
-            self.deactivate_elements(indices, 'Deactivated.')
+        if len(deac_indices) > 0:
+            self.deactivate_elements(deac_indices, 'Deactivated.')
         
 
 
