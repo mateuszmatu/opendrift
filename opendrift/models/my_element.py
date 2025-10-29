@@ -95,7 +95,7 @@ class MyElementDrift(OceanDrift):
 
         elif self.get_config('general:deac') is 'shortwave_minmax':
             Qdown = self.shortwave_radiation_at_depth(self.environment.net_downward_shortwave_flux_at_sea_water_surface, self.elements.z)
-            print(Qdown)
+            self.elements.light = Qdown
             indices = [el < self.get_config('general:deac_min') or el > self.get_config('general:deac_max') for el in Qdown]
             
         # Uses the new health attribute of pelagic egg.
@@ -142,6 +142,5 @@ class MyElementDrift(OceanDrift):
 
         # Vertical advection
         self.vertical_advection()
-        print('running deac')
         self.deac()
 
