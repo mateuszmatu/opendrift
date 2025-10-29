@@ -92,30 +92,26 @@ class MyElementDrift(OceanDrift):
                             'enum': ['hard_minmax', 'exposure'],
                             'level': CONFIG_LEVEL_ADVANCED}
         })
-        """
-        self._add_config({
-            'general:deac': {'type': 'enum', 'default': None, 'enum': [None, 'temperature_minmax', 'salinity_minmax', 'exposure', 'shortwave_minmax'],
-                'description': 'Deactivation function', 
-                'level': CONFIG_LEVEL_ADVANCED},
-            'general:deac_min': {'type': 'float', 'default': -999.0, 'min': -999, 'max': 999, 'units': 'None',
-                'description':  'Min thresholds for the deactivation function.',
-                'level': CONFIG_LEVEL_ADVANCED},
-            'general:deac_max': {'type': 'float', 'default': 999.0, 'min': -999, 'max': 999, 'units': 'None',
-                'description':  'Max thresholds for the deactivation function.',
-                'level': CONFIG_LEVEL_ADVANCED},
-            'general:deac_exposure': {'type': 'enum', 'default': 'simple_minmax_exposure', 
-                'enum': ['simple_minmax_exposure', 'randomly_consumed'],
-                'description': 'Exposure functions for premature_deactivation.',
-                'level': CONFIG_LEVEL_ADVANCED}
-            })
-        """
+
         if self.get_config('deac:variable') not in self.required_variables:
             raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables.\n Add it with "OceanDrift.required_variables.update".')
     
     def deac(self):
 
         indices = []
+        
+        if self.get_config('deac:method') is 'hard_minmax':
+            indices = [el < self.get_config('deac:min') 
+                       or el > self.get_config('deac:max') 
+                       for el in self.environment[self.get_config('deac:variable')]]
 
+
+        elif self.get_config('deac:method') is 'exposure':
+            pass
+
+        if len(indices) > 0:
+            self.deactivate_elements(indices, 'Deactivated.')
+        
 
 
     """
