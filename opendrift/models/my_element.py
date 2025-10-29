@@ -68,17 +68,27 @@ class MyElementDrift(OceanDrift):
                              'default': False,
                              'description': 'Turn on deactivation functions',
                              'level': CONFIG_LEVEL_ADVANCED},
-            'deac:min': {'type': 'float',
-                         'default': -999.0,
-                         'units': 'None',
-                         'level': CONFIG_LEVEL_ADVANCED},
-            'deac:max': {'type': 'float',
-                         'default': 999.0,
-                         'units': 'None',
-                         'level': CONFIG_LEVEL_ADVANCED},
-            'deac:variable': {'type': 'string',
+            'deac:min':     {'type': 'float',
+                            'default': -999.0, 'min': -999, 'max': 999, 
+                            'units': 'None',
+                            'description': 'Min threshold for deactivation function', 
+                            'level': CONFIG_LEVEL_ADVANCED},
+            'deac:max':     {'type': 'float',
+                            'default': 999.0, 'min': -999, 'max': 999, 
+                            'units': 'None',
+                            'description': 'Max threshold for deactivation function', 
+                            'level': CONFIG_LEVEL_ADVANCED},
+            'deac:variable': {'type': 'str',
                               'default': 'sea_water_temperature',
-                              'level': CONFIG_LEVEL_ADVANCED}
+                              'min_length': 1,
+                              'max_length': 999,
+                              'description': 'Physical variable for deactivation function', 
+                              'level': CONFIG_LEVEL_ADVANCED},
+            'deac:method':  {'type': 'enum',
+                            'default': 'hard_minmax',
+                            'description': 'Deactivation method',
+                            'enum': ['hard_minmax', 'exposure'],
+                            'level': CONFIG_LEVEL_ADVANCED}
         })
         """
         self._add_config({
@@ -102,8 +112,10 @@ class MyElementDrift(OceanDrift):
 
         indices = []
 
+        print(self.environment)
+        #if self.get_config('deac:variable') in self.environment.variables:
 
-
+    """
     def deac(self):
 
         indices = []        
@@ -142,6 +154,7 @@ class MyElementDrift(OceanDrift):
 
         if len(indices) > 0:
             self.deactivate_elements(indices, 'Deactivated through general:premature_deactivation config.')
+    """
 
     def update(self):
         """Update positions and properties of elements."""
