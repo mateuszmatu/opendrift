@@ -64,6 +64,24 @@ class MyElementDrift(OceanDrift):
         self._set_config_default('drift:vertical_advection_at_surface', True)
 
         self._add_config({
+            'general:deac': {'type': 'bool', 
+                             'default': False,
+                             'description': 'Turn on deactivation functions',
+                             'level': CONFIG_LEVEL_ADVANCED},
+            'deac:min': {'type': 'float',
+                         'default': -999.0,
+                         'units': 'None',
+                         'level': CONFIG_LEVEL_ADVANCED},
+            'deac:max': {'type': 'float',
+                         'default': 999.0,
+                         'units': 'None',
+                         'level': CONFIG_LEVEL_ADVANCED},
+            'deac:variable': {'type': 'string',
+                              'default': 'sea_water_temperature',
+                              'level': CONFIG_LEVEL_ADVANCED}
+        })
+        """
+        self._add_config({
             'general:deac': {'type': 'enum', 'default': None, 'enum': [None, 'temperature_minmax', 'salinity_minmax', 'exposure', 'shortwave_minmax'],
                 'description': 'Deactivation function', 
                 'level': CONFIG_LEVEL_ADVANCED},
@@ -78,6 +96,13 @@ class MyElementDrift(OceanDrift):
                 'description': 'Exposure functions for premature_deactivation.',
                 'level': CONFIG_LEVEL_ADVANCED}
             })
+        """
+    
+    def deac(self):
+
+        indices = []
+
+
 
     def deac(self):
 
@@ -142,5 +167,6 @@ class MyElementDrift(OceanDrift):
 
         # Vertical advection
         self.vertical_advection()
-        self.deac()
+        if self.get_config('general:deac') is True:
+            self.deac()
 
