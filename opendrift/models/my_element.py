@@ -9,7 +9,7 @@ class MyElement(Lagrangian3DArray):
     """
 
     variables = Lagrangian3DArray.add_variables([
-        ('health_percentage', {'dtype': np.float32,
+        ('health', {'dtype': np.float32,
                      'units': '',
                      'default': 100.}),
         ('light', {'dtype': np.float32,
@@ -100,65 +100,36 @@ class MyElementDrift(OceanDrift):
                                   'level': CONFIG_LEVEL_ADVANCED}
         })
 
-        if self.get_config('deac:variable') not in self.required_variables or self.get_config('deac:variable') not in self.elements:
+        if self.get_config('deac:variable') not in self.required_variables and self.get_config('deac:variable') not in self.elements.variables.keys():
             raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables or element variables.\n Add it with "OceanDrift.required_variables.update".')
     
     def deac(self):
 
         deac_indices = []
-
+        
+        if self.get_config('deac:variable') in self.required_variables:
+            considered_value = self.required_variables[self.get_config('deac:variable')]
+        elif self.get_config('deac:variable') in self.elements.variables.keys():
+            #print(self.elements['light'])
+            print('*****')
+            print(self.elements)
+            print(type(self.elements))
+            print(self.elements.variables.keys())
+            print(self.elements.variables)
+            print(self.elements.light)
+            print(self.elements.variables['light'].values())
+            print('******')
+            considered_value = self.elements[self.get_config('deac:variable')]
+        print(considered_value)
         health_indices = [el < self.get_config('deac:min') 
                             or el > self.get_config('deac:max')
-                            for el in self.environment[self.get_config('deac:variable')]]
+                            for el in considered_value]
         self.elements.health[health_indices == np.True_] -= self.get_config('deac:health_drain')
 
         deac_indices = [el <= 0 for el in self.elements.health]            
 
         if len(deac_indices) > 0:
             self.deactivate_elements(deac_indices, 'Deactivated.')
-        
-
-
-    """
-    def deac(self):
-
-        indices = []        
-        if self.get_config('general:deac') is None:
-            logger.info('Deactivation function deactivated')
-            return
-
-        # Hard limits for temperature or salinity (basic usage)
-        elif self.get_config('general:deac') is 'temperature_minmax':
-            indices = [el < self.get_config('general:deac_min') or el > self.get_config('general:deac_max') for el in self.environment.sea_water_temperature]
-
-        elif self.get_config('general:deac') is 'salinity_minmax':
-            indices = [el < self.get_config('general:deac_min') or el > self.get_config('general:deac_max') for el in self.environment.sea_water_salinity]
-
-        elif self.get_config('general:deac') is 'shortwave_minmax':
-            Qdown = self.shortwave_radiation_at_depth(self.environment.net_downward_shortwave_flux_at_sea_water_surface, self.elements.z)
-            self.elements.light = Qdown
-            indices = [el < self.get_config('general:deac_min') or el > self.get_config('general:deac_max') for el in Qdown]
-            
-        # Uses the new health attribute of pelagic egg.
-        # Eg. 1 particle is an egg population, how much % of population survives along trajectory
-        # Eg. 2 Likelyhood of egg surviving trajectory
-        elif self.get_config('general:deac') is 'exposure':
-            # Create some exposure "health drain" functions
-            if self.get_config('general:deac_exposure') is 'simple_minmax_exposure':
-                health_indices = [el < self.get_config('general:deac_min') or 
-                           el > self.get_config('general:deac_max') 
-                           for el in self.environment.sea_water_temperature]
-
-                self.elements.health[health_indices == np.True_] -= 20
-            
-            elif self.get_config('general:deac_exposure') is 'randomly_consumed':
-                self.elements.health -= np.random.rand(len(self.elements.health)) * 10
-
-            indices = [el <= 0 for el in self.elements.health]
-
-        if len(indices) > 0:
-            self.deactivate_elements(indices, 'Deactivated through general:premature_deactivation config.')
-    """
 
     def update(self):
         """Update positions and properties of elements."""
@@ -186,3 +157,4 @@ class MyElementDrift(OceanDrift):
         self.vertical_advection()
         if self.get_config('general:deac') is True:
             self.deac()
+
