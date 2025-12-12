@@ -24,6 +24,8 @@ min = -999
 
 o.set_config('deac:max', max)
 o.set_config('deac:min', min)
+o.set_config('deac:method', 'hard_minmax')
+o.set_config('deac:variable', 'light')
 o.set_config('vertical_mixing:timestep', 60.) # seconds
 
 time = datetime(2025, 10, 25, 12)

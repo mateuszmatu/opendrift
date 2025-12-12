@@ -111,16 +111,16 @@ class MyElementDrift(OceanDrift):
             considered_value = self.required_variables[self.get_config('deac:variable')]
         elif self.get_config('deac:variable') in self.elements.variables.keys():
             #print(self.elements['light'])
-            print('*****')
-            print(self.elements)
-            print(type(self.elements))
-            print(self.elements.variables.keys())
-            print(self.elements.variables)
-            print(self.elements.light)
-            print(self.elements.variables['light'].values())
-            print('******')
-            considered_value = self.elements[self.get_config('deac:variable')]
-        print(considered_value)
+            #print('*****')
+            #print(self.elements)
+            #print(type(self.elements))
+            #print(self.elements.variables.keys())
+            #print(self.elements.variables)
+            #print(self.elements.light)
+            #print(self.elements.variables['light'].values())
+            #print('******')
+            considered_value=self.elements.light #TODO get this to work to be more generic
+            #considered_value = self.elements[self.get_config('deac:variable')]
         health_indices = [el < self.get_config('deac:min') 
                             or el > self.get_config('deac:max')
                             for el in considered_value]
@@ -130,6 +130,10 @@ class MyElementDrift(OceanDrift):
 
         if len(deac_indices) > 0:
             self.deactivate_elements(deac_indices, 'Deactivated.')
+
+    def attraction(self):
+        ## compute direction towards more preferable conditions, and add 3D velocity towards that direction. 
+        pass
 
     def update(self):
         """Update positions and properties of elements."""
