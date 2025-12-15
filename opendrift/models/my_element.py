@@ -20,7 +20,16 @@ class MyElement(Lagrangian3DArray):
                            'default': 0}),
         ('vertical_swim_speed', {'dtype': np.float32,
                                   'units': 'm s^-1',
-                                  'default': 0})
+                                  'default': 0}),
+        ('diameter', {'dtype': np.float32,
+                      'units': 'm',
+                      'default': 0.0014}),  # for NEA Cod
+        ('neutral_buoyancy_salinity', {'dtype': np.float32,
+                                       'units': '[]',
+                                       'default': 31.25}),  # for NEA Cod
+        ('density', {'dtype': np.float32,
+                     'units': 'kg/m^3',
+                     'default': 1028.})
     ])
 
 class MyElementDrift(OceanDrift):
