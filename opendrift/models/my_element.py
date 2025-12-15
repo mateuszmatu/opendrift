@@ -14,7 +14,13 @@ class MyElement(Lagrangian3DArray):
                      'default': 100.}),
         ('light', {'dtype': np.float32,
                    'units': 'W m^-2',
-                   'default': 0})
+                   'default': 0}),
+        ('prefered_light', {'dtype': np.float32,
+                           'units': 'W m^-2',
+                           'default': 0}),
+        ('vertical_swim_speed', {'dtype': np.float32,
+                                  'units': 'm s^-1',
+                                  'default': 0})
     ])
 
 class MyElementDrift(OceanDrift):
@@ -44,7 +50,7 @@ class MyElementDrift(OceanDrift):
         'land_binary_mask': {'fallback': None},
         'sea_water_temperature': {'fallback': 10, 'profiles': True},
         'sea_water_salinity': {'fallback': 34, 'profiles': True},
-        'net_downward_shortwave_flux_at_sea_water_surface': {'fallback': 0}
+        'net_downward_shortwave_flux_at_sea_water_surface': {'fallback': 100}
       }
 
 
@@ -102,23 +108,14 @@ class MyElementDrift(OceanDrift):
 
         if self.get_config('deac:variable') not in self.required_variables and self.get_config('deac:variable') not in self.elements.variables.keys():
             raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables or element variables.\n Add it with "OceanDrift.required_variables.update".')
-    
-    def deac(self):
 
+    def deac(self):
+        # need to rework this later
         deac_indices = []
         
         if self.get_config('deac:variable') in self.required_variables:
             considered_value = self.required_variables[self.get_config('deac:variable')]
         elif self.get_config('deac:variable') in self.elements.variables.keys():
-            #print(self.elements['light'])
-            #print('*****')
-            #print(self.elements)
-            #print(type(self.elements))
-            #print(self.elements.variables.keys())
-            #print(self.elements.variables)
-            #print(self.elements.light)
-            #print(self.elements.variables['light'].values())
-            #print('******')
             considered_value=self.elements.light #TODO get this to work to be more generic
             #considered_value = self.elements[self.get_config('deac:variable')]
         health_indices = [el < self.get_config('deac:min') 
@@ -131,12 +128,23 @@ class MyElementDrift(OceanDrift):
         if len(deac_indices) > 0:
             self.deactivate_elements(deac_indices, 'Deactivated.')
 
-    def attraction(self):
-        ## compute direction towards more preferable conditions, and add 3D velocity towards that direction. 
-        pass
+    def light_along_trajectory(self):
+        self.elements.light = self.shortwave_radiation_at_depth(self.environment.net_downward_shortwave_flux_at_sea_water_surface, self.elements.z)
+
+    def update_terminal_velocity(self, Tprofiles=None,
+                                 Sprofiles=None, z_index=None):
+    
+        if self.elements.light > self.elements.prefered_light:
+            W = -self.elements.vertical_swim_speed
+        elif self.elements.light < self.elements.prefered_light:
+            W = self.elements.vertical_swim_speed
+
+        self.elements.terminal_velocity = W
+
 
     def update(self):
         """Update positions and properties of elements."""
+        self.light_along_trajectory()
 
         self.water_column_stretching()
 
@@ -154,11 +162,10 @@ class MyElementDrift(OceanDrift):
         self.update_terminal_velocity()
         if self.get_config('drift:vertical_mixing') is True:
             self.vertical_mixing()
-        else:  # Buoyancy
-            self.vertical_buoyancy()
 
         # Vertical advection
         self.vertical_advection()
+        
         if self.get_config('general:deac') is True:
             self.deac()
 
