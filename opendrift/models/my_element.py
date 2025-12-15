@@ -26,7 +26,7 @@ class MyElement(Lagrangian3DArray):
                       'default': 0.0014}),  # for NEA Cod
         ('neutral_buoyancy_salinity', {'dtype': np.float32,
                                        'units': '[]',
-                                       'default': 31.25}),  # for NEA Cod
+                                       'default': 37.25}),  # for NEA Cod
         ('density', {'dtype': np.float32,
                      'units': 'kg/m^3',
                      'default': 1028.})
@@ -142,15 +142,119 @@ class MyElementDrift(OceanDrift):
 
     def update_terminal_velocity(self, Tprofiles=None,
                                  Sprofiles=None, z_index=None):
-        
+        W = self.velocity_light()
+        W += self.velocity_shape()
+        print(W)
+        self.elements.terminal_velocity = W
+
+    def velocity_light(self):
         if self.elements.light > self.elements.prefered_light:
             W = -self.elements.vertical_swim_speed
         elif self.elements.light < self.elements.prefered_light:
             W = self.elements.vertical_swim_speed
 
-        self.elements.terminal_velocity = W
+        return W
 
+    def velocity_shape(self, Tprofiles=None,
+                                 Sprofiles=None, z_index=None):
+        """Calculate terminal velocity for Pelagic Egg
 
+        according to
+        S. Sundby (1983): A one-dimensional model for the vertical
+        distribution of pelagic fish eggs in the mixed layer
+        Deep Sea Research (30) pp. 645-661
+
+        Method copied from ibm.f90 module of LADIM:
+        Vikebo, F., S. Sundby, B. Aadlandsvik and O. Otteraa (2007),
+        Fish. Oceanogr. (16) pp. 216-228
+        """
+        g = 9.81  # ms-2
+
+        # Pelagic Egg properties that determine buoyancy
+        eggsize = self.elements.diameter  # 0.0014 for NEA Cod
+        eggsalinity = self.elements.neutral_buoyancy_salinity
+        # 31.25 for NEA Cod
+
+        # prepare interpolation of temp, salt
+        if not (Tprofiles is None and Sprofiles is None):
+            if z_index is None:
+                z_i = range(Tprofiles.shape[0])  # evtl. move out of loop
+                # evtl. move out of loop
+                z_index = interp1d(-self.environment_profiles['z'],
+                                   z_i, bounds_error=False)
+            zi = z_index(-self.elements.z)
+            upper = np.maximum(np.floor(zi).astype(np.uint8), 0)
+            lower = np.minimum(upper+1, Tprofiles.shape[0]-1)
+            weight_upper = 1 - (zi - upper)
+
+        # do interpolation of temp, salt if profiles were passed into
+        # this function, if not, use reader by calling self.environment
+        if Tprofiles is None:
+            T0 = self.environment.sea_water_temperature
+        else:
+            T0 = Tprofiles[upper, range(Tprofiles.shape[1])] * \
+                weight_upper + \
+                Tprofiles[lower, range(Tprofiles.shape[1])] * \
+                (1-weight_upper)
+        if Sprofiles is None:
+            S0 = self.environment.sea_water_salinity
+        else:
+            S0 = Sprofiles[upper, range(Sprofiles.shape[1])] * \
+                weight_upper + \
+                Sprofiles[lower, range(Sprofiles.shape[1])] * \
+                (1-weight_upper)
+
+        # The density difference bettwen a pelagic egg and the ambient water
+        # is regulated by their salinity difference through the
+        # equation of state for sea water.
+        # The Egg has the same temperature as the ambient water and its
+        # salinity is regulated by osmosis through the egg shell.
+        DENSw = self.sea_water_density(T=T0, S=S0)
+        DENSegg = self.sea_water_density(T=T0, S=eggsalinity)
+        dr = DENSw-DENSegg  # density difference
+
+        # water viscosity
+        my_w = 0.001*(1.7915 - 0.0538*T0 + 0.007*(T0**(2.0)) - 0.0023*S0)
+        # ~0.0014 kg m-1 s-1
+
+        # terminal velocity for low Reynolds numbers
+        W = (1.0/my_w)*(1.0/18.0)*g*eggsize**2 * dr
+
+        # check if we are in a Reynolds regime where Re > 0.5
+        highRe = np.where(W*1000*eggsize/my_w > 0.5)
+
+        # Use empirical equations for terminal velocity in
+        # high Reynolds numbers.
+        # Empirical equations have length units in cm!
+        my_w = 0.01854 * np.exp(-0.02783 * T0)  # in cm2/s
+        d0 = (eggsize * 100) - 0.4 * \
+            (9.0 * my_w**2 / (100 * g) * DENSw / dr)**(1.0 / 3.0)  # cm
+        W2 = 19.0*d0*(0.001*dr)**(2.0/3.0)*(my_w*0.001*DENSw)**(-1.0/3.0)
+        # cm/s
+        W2 = W2/100.  # back to m/s
+
+        W[highRe] = W2[highRe]
+
+        return W
+    
+    def vertical_buoyancy(self):
+        """Move particles vertically according to their buoyancy"""
+        in_ocean = np.where(self.elements.z<=0)[0]
+        if len(in_ocean) > 0:
+            self.elements.z[in_ocean] = np.minimum(0,
+                self.elements.z[in_ocean] + self.elements.terminal_velocity[in_ocean] * self.time_step.total_seconds())
+
+        # check for minimum height/maximum depth for each particle accouting also for
+        # the sea surface height
+        Zmin = -1.*(self.environment.sea_floor_depth_below_sea_level + self.environment.sea_surface_height)
+
+        # Let particles stick to bottom
+        bottom = np.where(self.elements.z < Zmin)
+        if len(bottom[0]) > 0:
+            logger.debug('%s elements reached seafloor, interacting with bottom' % len(bottom[0]))
+            self.interact_with_seafloor()
+            self.bottom_interaction(Zmin)
+    
     def update(self):
         """Update positions and properties of elements."""
         self.light_along_trajectory()
