@@ -17,8 +17,8 @@ o.set_config('general:deac', True)
 
 
 
-o.set_config('drift:vertical_mixing', True)
-o.set_config('drift:vertical_advection', True)
+o.set_config('drift:vertical_mixing', False)
+o.set_config('drift:vertical_advection', False)
 max = 999
 min = -999
 
@@ -32,4 +32,4 @@ time = datetime(2025, 10, 25, 12)
 pos = [7.3, 57.2]
 o.seed_elements(pos[0], pos[1], z=-15, number=1,
                 time=time, prefered_light=10, vertical_swim_speed=0.001)
-o.run(duration=timedelta(hours=10), time_step=timedelta(minutes=15), time_step_output=timedelta(minutes=15), outfile='../light_attraction_with_mixing.nc')                                   
+o.run(duration=timedelta(hours=10), time_step=timedelta(minutes=15), time_step_output=timedelta(minutes=15), outfile='../light_attraction.nc')                                   

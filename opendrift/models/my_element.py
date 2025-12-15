@@ -133,7 +133,7 @@ class MyElementDrift(OceanDrift):
 
     def update_terminal_velocity(self, Tprofiles=None,
                                  Sprofiles=None, z_index=None):
-    
+        
         if self.elements.light > self.elements.prefered_light:
             W = -self.elements.vertical_swim_speed
         elif self.elements.light < self.elements.prefered_light:
@@ -162,7 +162,8 @@ class MyElementDrift(OceanDrift):
         self.update_terminal_velocity()
         if self.get_config('drift:vertical_mixing') is True:
             self.vertical_mixing()
-
+        else:
+            self.vertical_buoyancy()
         # Vertical advection
         self.vertical_advection()
         
