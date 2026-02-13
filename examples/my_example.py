@@ -6,7 +6,7 @@ import xarray as xr
 
 o = MyElementDrift(loglevel=20)  
 
-o.add_reader(reader_netCDF_CF_generic.Reader('https://thredds.met.no/thredds/dodsC/fou-hi/norkystv3_800m_m00_be'))
+o.add_reader(reader_netCDF_CF_generic.Reader('https://thredds.met.no/thredds/dodsC/fou-hi/norkystv3_160m_m70_be'))
 
 #o.set_config('vertical_mixing:diffusivitymodel', 'windspeed_Sundby1983') # windspeed parameterization for eddy diffusivity
 
@@ -17,8 +17,8 @@ o.set_config('general:deac', True)
 
 
 
-o.set_config('drift:vertical_mixing', False)
-o.set_config('drift:vertical_advection', False)
+o.set_config('drift:vertical_mixing', True)
+o.set_config('drift:vertical_advection', True)
 max = 999
 min = -999
 
@@ -30,6 +30,7 @@ o.set_config('deac:variable', 'light')
 time = datetime(2025, 10, 25, 12)
 
 pos = [7.3, 57.2]
-o.seed_elements(pos[0], pos[1], z=-15, number=1,
-                time=time, prefered_light=10, vertical_swim_speed=0.001)
-o.run(duration=timedelta(hours=10), time_step=timedelta(minutes=15), time_step_output=timedelta(minutes=15), outfile='../light_attraction.nc')                                   
+pos = [6.18085, 62.36931]
+o.seed_elements(pos[0], pos[1], z=-1, number=100, radius=50,
+                time=time, prefered_light=10, vertical_swim_speed=0.0005)
+o.run(duration=timedelta(hours=48), time_step=timedelta(minutes=15), time_step_output=timedelta(minutes=15), outfile='../light-attraction-0-0005swim.nc')                                   
