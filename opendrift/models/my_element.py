@@ -16,14 +16,14 @@ class MyElement(Lagrangian3DArray):
                    'units': 'W m^-2',
                    'default': 0}),
         ('prefered_light', {'dtype': np.float32,
-                           'units': 'W m^-2',
+                           'units': 'umol m^-2 s^-1',
                            'default': 0}),
         ('vertical_swim_speed', {'dtype': np.float32,
                                   'units': 'm s^-1',
-                                  'default': 0}),
+                                  'default': 0.0005}), # From Sandvik et. al. 2020
         ('diameter', {'dtype': np.float32,
                       'units': 'm',
-                      'default': 0.0014}),  # for NEA Cod
+                      'default': 0.0014}),  # for NEA Co
         ('neutral_buoyancy_salinity', {'dtype': np.float32,
                                        'units': '[]',
                                        'default': 37.25}),  # for NEA Cod
@@ -59,7 +59,7 @@ class MyElementDrift(OceanDrift):
         'land_binary_mask': {'fallback': None},
         'sea_water_temperature': {'fallback': 10, 'profiles': True},
         'sea_water_salinity': {'fallback': 34, 'profiles': True},
-        'net_downward_shortwave_flux_at_sea_water_surface': {'fallback': 100}
+        'net_downward_shortwave_flux_at_sea_water_surface': {'fallback': 150}
       }
 
 
@@ -143,11 +143,14 @@ class MyElementDrift(OceanDrift):
     def update_terminal_velocity(self, Tprofiles=None,
                                  Sprofiles=None, z_index=None):
         W = self.velocity_light()
-        W += self.velocity_shape()
-        print(W)
+        #W += self.velocity_shape()
         self.elements.terminal_velocity = W
 
     def velocity_light(self):
+        #µmol/m²/s = W/m² * 4.6
+
+        photon = self.elements.light * 4.6 
+
         if self.elements.light > self.elements.prefered_light:
             W = -self.elements.vertical_swim_speed
         elif self.elements.light < self.elements.prefered_light:
