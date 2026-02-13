@@ -143,19 +143,15 @@ class MyElementDrift(OceanDrift):
     def update_terminal_velocity(self, Tprofiles=None,
                                  Sprofiles=None, z_index=None):
         W = self.velocity_light()
-        #W += self.velocity_shape()
+        #W = self.velocity_shape()
         self.elements.terminal_velocity = W
 
     def velocity_light(self):
         #µmol/m²/s = W/m² * 4.6
 
-        photon = self.elements.light * 4.6 
-
-        if self.elements.light > self.elements.prefered_light:
-            W = -self.elements.vertical_swim_speed
-        elif self.elements.light < self.elements.prefered_light:
-            W = self.elements.vertical_swim_speed
-
+        photon = self.elements.light * 4.6
+        W = np.where(self.elements.light == self.elements.prefered_light, 0, np.where(self.elements.light > self.elements.prefered_light, -self.elements.vertical_swim_speed, self.elements.vertical_swim_speed))
+        
         return W
 
     def velocity_shape(self, Tprofiles=None,
@@ -237,7 +233,7 @@ class MyElementDrift(OceanDrift):
         W2 = W2/100.  # back to m/s
 
         W[highRe] = W2[highRe]
-
+        print(W)
         return W
     
     def vertical_buoyancy(self):
