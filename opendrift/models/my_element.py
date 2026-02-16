@@ -3,6 +3,7 @@ import logging; logger = logging.getLogger(__name__)
 
 from opendrift.models.oceandrift import OceanDrift, Lagrangian3DArray
 from opendrift.config import CONFIG_LEVEL_ESSENTIAL, CONFIG_LEVEL_BASIC, CONFIG_LEVEL_ADVANCED
+from scipy.interpolate import interp1d
 
 class MyElement(Lagrangian3DArray):
     """Extending Lagrangian3DArray with specific properties for pelagic eggs
@@ -29,7 +30,19 @@ class MyElement(Lagrangian3DArray):
                                        'default': 37.25}),  # for NEA Cod
         ('density', {'dtype': np.float32,
                      'units': 'kg/m^3',
-                     'default': 1028.})
+                     'default': 1028.}),
+        ('temperature_above', {'dtype': np.float32,
+                     'units': '',
+                    'default': 10}),
+        ('temperature_below', {'dtype': np.float32,
+                     'units': '',
+                    'default': 10}),
+        ('salinity_above', {'dtype': np.float32,
+                            'units': '',
+                        'default': 30}),
+        ('salinity_below', {'dtype': np.float32,
+            'units': '',
+        'default': 30}),
     ])
 
 class MyElementDrift(OceanDrift):
@@ -115,12 +128,20 @@ class MyElementDrift(OceanDrift):
             'my_element:avoided_salinity': {'type':'float', 'default':28,
                         'min':0, 'max':50, 'units': 'PSU',
                         'description': 'Salinity actively avoided',
-                        'level': CONFIG_LEVEL_BASIC}
+                        'level': CONFIG_LEVEL_BASIC},
+            'my_element:sensing_distance': {'type':'float', 'default':0.25,
+                                            'units': 'm',
+                                            'min': 0,
+                                            'max': 100,
+                                            'description':'Sensing distance for particle', 
+                                            'level': CONFIG_LEVEL_ADVANCED}
             })
 
         if self.get_config('deac:variable') not in self.required_variables and self.get_config('deac:variable') not in self.elements.variables.keys():
             raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables or element variables.\n Add it with "OceanDrift.required_variables.update".')
-
+        self.sensing_distance = self.get_config('my_element:sensing_distance')
+        self.avoided_salinity = self.get_config('my_element:avoided_salinity')
+        
     def deac(self):
         # need to rework this later
         deac_indices = []
@@ -149,17 +170,26 @@ class MyElementDrift(OceanDrift):
         #W = self.velocity_shape()
         self.elements.terminal_velocity = W
 
+    def sensing(self):
+        """
+        Sensing if above or bellow the conditions are better for them
+        within a specified distance.
+        moving the particles up and then down then back in their initial position
+        """
+        logger.debug("sensing temperature and salinity")
+        Backup= np.copy(self.elements.z[:])
 
-    def detect_salinity(self):
-        # Wants to be as close to light preference as possible without crossing salinity boundary.
+        self.elements.z +=self.sensing_distance
+        T0, S0 = self.interpolate_profiles()
+        self.elements.salinity_above = S0
+        self.elements.temperature_above = T0
 
-        # Need salinity profile
-        # Currently only senses the layer directly above or below. 
+        self.elements.z -= 2*self.sensing_distance
+        T0, S0 = self.interpolate_profiles()
+        self.elements.salinity_below = S0
+        self.elements.temperature_below = T0
 
-        Sprofiles = self.environment_profiles['sea_water_salinity']
-        Tprofiles = self.environment_profiles['sea_water_temperature']
-
-        
+        self.elements.z = Backup
 
     def velocity_light(self):
         #µmol/m²/s = W/m² * 4.6
@@ -169,7 +199,7 @@ class MyElementDrift(OceanDrift):
         
         return W
 
-    def interpolate_profiles(self):
+    def interpolate_profiles(self, z_index=None):
         Sprofiles = self.environment_profiles['sea_water_salinity']
         Tprofiles = self.environment_profiles['sea_water_temperature']
 
@@ -221,7 +251,6 @@ class MyElementDrift(OceanDrift):
     
     def update(self):
         """Update positions and properties of elements."""
-        self.light_along_trajectory()
 
         self.water_column_stretching()
 
@@ -235,9 +264,11 @@ class MyElementDrift(OceanDrift):
         # Stokes drift
         self.stokes_drift()
 
+        self.light_along_trajectory()
+        self.sensing()
         # Turbulent Mixing
         self.update_terminal_velocity()
-        self.detect_salinity()
+
         if self.get_config('drift:vertical_mixing') is True:
             self.vertical_mixing()
         else:
