@@ -59,9 +59,8 @@ class MyElementDrift(OceanDrift):
         'land_binary_mask': {'fallback': None},
         'sea_water_temperature': {'fallback': 10, 'profiles': True},
         'sea_water_salinity': {'fallback': 34, 'profiles': True},
-        'net_downward_shortwave_flux_at_sea_water_surface': {'fallback': 150}
+        'net_downward_shortwave_flux_at_sea_water_surface': {'fallback': 150},
       }
-
 
     # Default colors for plotting
     status_colors = {'initial': 'green', 'active': 'blue',
@@ -112,8 +111,12 @@ class MyElementDrift(OceanDrift):
                                   'description': 'Value to subtract from 100 each time step particle is outside of threshold. Deactivates particle at 0.',
                                   'min': 0,
                                   'max': 100,
-                                  'level': CONFIG_LEVEL_ADVANCED}
-        })
+                                  'level': CONFIG_LEVEL_ADVANCED},
+            'my_element:avoided_salinity': {'type':'float', 'default':28,
+                        'min':0, 'max':50, 'units': 'PSU',
+                        'description': 'Salinity actively avoided',
+                        'level': CONFIG_LEVEL_BASIC}
+            })
 
         if self.get_config('deac:variable') not in self.required_variables and self.get_config('deac:variable') not in self.elements.variables.keys():
             raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables or element variables.\n Add it with "OceanDrift.required_variables.update".')
@@ -146,6 +149,18 @@ class MyElementDrift(OceanDrift):
         #W = self.velocity_shape()
         self.elements.terminal_velocity = W
 
+
+    def detect_salinity(self):
+        # Wants to be as close to light preference as possible without crossing salinity boundary.
+
+        # Need salinity profile
+        # Currently only senses the layer directly above or below. 
+
+        Sprofiles = self.environment_profiles['sea_water_salinity']
+        Tprofiles = self.environment_profiles['sea_water_temperature']
+
+        
+
     def velocity_light(self):
         #µmol/m²/s = W/m² * 4.6
 
@@ -154,27 +169,10 @@ class MyElementDrift(OceanDrift):
         
         return W
 
-    def velocity_shape(self, Tprofiles=None,
-                                 Sprofiles=None, z_index=None):
-        """Calculate terminal velocity for Pelagic Egg
+    def interpolate_profiles(self):
+        Sprofiles = self.environment_profiles['sea_water_salinity']
+        Tprofiles = self.environment_profiles['sea_water_temperature']
 
-        according to
-        S. Sundby (1983): A one-dimensional model for the vertical
-        distribution of pelagic fish eggs in the mixed layer
-        Deep Sea Research (30) pp. 645-661
-
-        Method copied from ibm.f90 module of LADIM:
-        Vikebo, F., S. Sundby, B. Aadlandsvik and O. Otteraa (2007),
-        Fish. Oceanogr. (16) pp. 216-228
-        """
-        g = 9.81  # ms-2
-
-        # Pelagic Egg properties that determine buoyancy
-        eggsize = self.elements.diameter  # 0.0014 for NEA Cod
-        eggsalinity = self.elements.neutral_buoyancy_salinity
-        # 31.25 for NEA Cod
-
-        # prepare interpolation of temp, salt
         if not (Tprofiles is None and Sprofiles is None):
             if z_index is None:
                 z_i = range(Tprofiles.shape[0])  # evtl. move out of loop
@@ -185,9 +183,7 @@ class MyElementDrift(OceanDrift):
             upper = np.maximum(np.floor(zi).astype(np.uint8), 0)
             lower = np.minimum(upper+1, Tprofiles.shape[0]-1)
             weight_upper = 1 - (zi - upper)
-
-        # do interpolation of temp, salt if profiles were passed into
-        # this function, if not, use reader by calling self.environment
+        
         if Tprofiles is None:
             T0 = self.environment.sea_water_temperature
         else:
@@ -203,38 +199,7 @@ class MyElementDrift(OceanDrift):
                 Sprofiles[lower, range(Sprofiles.shape[1])] * \
                 (1-weight_upper)
 
-        # The density difference bettwen a pelagic egg and the ambient water
-        # is regulated by their salinity difference through the
-        # equation of state for sea water.
-        # The Egg has the same temperature as the ambient water and its
-        # salinity is regulated by osmosis through the egg shell.
-        DENSw = self.sea_water_density(T=T0, S=S0)
-        DENSegg = self.sea_water_density(T=T0, S=eggsalinity)
-        dr = DENSw-DENSegg  # density difference
-
-        # water viscosity
-        my_w = 0.001*(1.7915 - 0.0538*T0 + 0.007*(T0**(2.0)) - 0.0023*S0)
-        # ~0.0014 kg m-1 s-1
-
-        # terminal velocity for low Reynolds numbers
-        W = (1.0/my_w)*(1.0/18.0)*g*eggsize**2 * dr
-
-        # check if we are in a Reynolds regime where Re > 0.5
-        highRe = np.where(W*1000*eggsize/my_w > 0.5)
-
-        # Use empirical equations for terminal velocity in
-        # high Reynolds numbers.
-        # Empirical equations have length units in cm!
-        my_w = 0.01854 * np.exp(-0.02783 * T0)  # in cm2/s
-        d0 = (eggsize * 100) - 0.4 * \
-            (9.0 * my_w**2 / (100 * g) * DENSw / dr)**(1.0 / 3.0)  # cm
-        W2 = 19.0*d0*(0.001*dr)**(2.0/3.0)*(my_w*0.001*DENSw)**(-1.0/3.0)
-        # cm/s
-        W2 = W2/100.  # back to m/s
-
-        W[highRe] = W2[highRe]
-        print(W)
-        return W
+        return T0, S0
     
     def vertical_buoyancy(self):
         """Move particles vertically according to their buoyancy"""
@@ -272,6 +237,7 @@ class MyElementDrift(OceanDrift):
 
         # Turbulent Mixing
         self.update_terminal_velocity()
+        self.detect_salinity()
         if self.get_config('drift:vertical_mixing') is True:
             self.vertical_mixing()
         else:
