@@ -259,91 +259,18 @@ class LarvalFish(OceanDrift):
 
         self.elements.z[larvae] = np.minimum(0, self.elements.z[larvae] + direction*max_migration_per_timestep)
 
-    def advect_ocean_current(self, factor=1):
-
-        cdf = self.elements.current_drift_factor
-        cdfmin = cdf.min()
-        cdfmax = cdf.max()
-        if cdfmin != 1 or cdfmax != 1:
-            if cdfmin == cdfmax:
-                logger.debug('Using currrent drift factor of %s' % cdf)
-            else:
-                logger.debug('Using currrent drift factor between %s and %s'
-                             % (cdfmin, cdfmax))
-        factor = factor*cdf
-        # Runge-Kutta scheme
-        if self.get_config('drift:advection_scheme')[0:11] == 'runge-kutta':
-            x_vel = self.environment.x_sea_water_velocity
-            y_vel = self.environment.y_sea_water_velocity
-
-            # Find midpoint
-            az = np.degrees(np.arctan2(x_vel, y_vel))
-            speed = np.sqrt(x_vel*x_vel + y_vel*y_vel)
-            dist = speed*self.time_step.total_seconds()*.5
-            geod = pyproj.Geod(ellps='WGS84')
-            mid_lon, mid_lat, dummy = geod.fwd(self.elements.lon,
-                                               self.elements.lat,
-                                               az, dist, radians=False)
-            # Find current at midpoint, a half timestep later
-            logger.debug('Runge-kutta, fetching half time-step later...')
-            mid_env, profiles, missing = self.env.get_environment(
-                ['x_sea_water_velocity', 'y_sea_water_velocity'],
-                self.time + self.time_step/2,
-                mid_lon, mid_lat, self.elements.z, profiles=None)
-            if self.get_config('drift:advection_scheme') == 'runge-kutta4':
-                logger.debug('Runge-kutta 4th order...')
-                x_vel2 = mid_env['x_sea_water_velocity']
-                y_vel2 = mid_env['y_sea_water_velocity']
-                az2 = np.degrees(np.arctan2(x_vel2, y_vel2))
-                speed2 = np.sqrt(x_vel2*x_vel2 + y_vel2*y_vel2)
-                dist2 = speed2*self.time_step.total_seconds()*.5
-                lon2, lat2, dummy = \
-                    geod.fwd(self.elements.lon,
-                             self.elements.lat,
-                             az2, dist2, radians=False)
-                env2, profiles, missing = self.env.get_environment(
-                    ['x_sea_water_velocity', 'y_sea_water_velocity'],
-                    self.time + self.time_step/2,
-                    lon2, lat2, self.elements.z, profiles=None)
-                # Third step
-                x_vel3 = env2['x_sea_water_velocity']
-                y_vel3 = env2['y_sea_water_velocity']
-                az3 = np.degrees(np.arctan2(x_vel3, y_vel3))
-                speed3 = np.sqrt(x_vel3*x_vel3 + y_vel3*y_vel3)
-                dist3 = speed3*self.time_step.total_seconds()*.5
-                lon3, lat3, dummy = \
-                    geod.fwd(self.elements.lon,
-                             self.elements.lat,
-                             az3, dist3, radians=False)
-                env3, profiles, missing = self.env.get_environment(
-                    ['x_sea_water_velocity', 'y_sea_water_velocity'],
-                    self.time + self.time_step,
-                    lon3, lat3, self.elements.z, profiles=None)
-                # Fourth step
-                x_vel4 = env3['x_sea_water_velocity']
-                y_vel4 = env3['y_sea_water_velocity']
-                u4 = (x_vel + 2*x_vel2 + 2* x_vel3 + x_vel4)/6.0
-                v4 = (y_vel + 2*y_vel2 + 2* y_vel3 + y_vel4)/6.0
-                # Move particles using runge-kutta4 velocity
-                self.update_positions(u4*factor, v4*factor)
-
-            else:
-                # Move particles using runge-kutta velocity
-                self.update_positions(
-                        factor*mid_env['x_sea_water_velocity'],
-                        factor*mid_env['y_sea_water_velocity'])
-        elif self.get_config('drift:advection_scheme') == 'euler':
-            # Euler scheme
-            self.update_positions(
-                    factor*self.environment.x_sea_water_velocity,
-                    factor*self.environment.y_sea_water_velocity)
-        else:
-            raise ValueError('Drift scheme not recognised: ' +
-                             self.get_config('drift:advection_scheme'))
+    def freeze_egg(self):
+        print('*********')
+        print(self.elements.moving)
+        print(self.elements.hatched)
+        print('************')
+        self.elements.moving = self.elements.hatched
 
     def update(self):
 
         self.update_fish_larvae()
+        if self.get_config('drift:egg_advection') is False:
+            self.freeze_egg()
         self.advect_ocean_current()
 
         # Stokes drift
