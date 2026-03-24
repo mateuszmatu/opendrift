@@ -96,6 +96,13 @@ class LarvalFish(OceanDrift):
                  'description': 'Fraction of timestep swimming',
                  'level': CONFIG_LEVEL_ADVANCED},
             })
+        
+        self._add_config({
+            'drift:egg_advection':
+            {'type': 'bool', 'default':True,
+             'description':'Turn on/off egg advection',
+             'level':CONFIG_LEVEL_ADVANCED}
+        })
 
         self._set_config_default('drift:vertical_mixing', True)
         self._set_config_default('drift:vertical_mixing_at_surface', True)
