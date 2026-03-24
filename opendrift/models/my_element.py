@@ -125,11 +125,14 @@ class MyElementDrift(OceanDrift):
                                   'min': 0,
                                   'max': 100,
                                   'level': CONFIG_LEVEL_ADVANCED},
-            'my_element:avoided_salinity': {'type':'float', 'default':28,
-                        'min':0, 'max':50, 'units': 'PSU',
-                        'description': 'Salinity actively avoided',
-                        'level': CONFIG_LEVEL_BASIC},
-            'my_element:sensing_distance': {'type':'float', 'default':0.25,
+            'my_element:avoid_salinity': {'type':'bool', 'default': False,
+                                            'description': 'Turn on salinity avoidance',
+                                            'level': CONFIG_LEVEL_ADVANCED},
+            'my_element:avoid_salinity_value': {'type':'float', 'default': 30,
+                        'min': 0, 'max': 50, 'units': 'PSU',
+                        'description': 'Salinity value actively avoided',
+                        'level': CONFIG_LEVEL_ADVANCED},
+            'my_element:sensing_distance': {'type':'float', 'default': 0.25,
                                             'units': 'm',
                                             'min': 0,
                                             'max': 100,
@@ -139,8 +142,6 @@ class MyElementDrift(OceanDrift):
 
         if self.get_config('deac:variable') not in self.required_variables and self.get_config('deac:variable') not in self.elements.variables.keys():
             raise ValueError(f'Variable {self.get_config('deac:variable')} is not in list of required variables or element variables.\n Add it with "OceanDrift.required_variables.update".')
-        self.sensing_distance = self.get_config('my_element:sensing_distance')
-        self.avoided_salinity = self.get_config('my_element:avoided_salinity')
         
     def deac(self):
         # need to rework this later
@@ -167,7 +168,9 @@ class MyElementDrift(OceanDrift):
     def update_terminal_velocity(self, Tprofiles=None,
                                  Sprofiles=None, z_index=None):
         W = self.velocity_light()
-        #W = self.velocity_shape()
+        if self.get_config('my_element:avoid_salinity') is True:
+            W = self.velocity_salinity_adjust(W)
+
         self.elements.terminal_velocity = W
 
     def sensing(self):
@@ -179,12 +182,12 @@ class MyElementDrift(OceanDrift):
         logger.debug("sensing temperature and salinity")
         Backup= np.copy(self.elements.z[:])
 
-        self.elements.z +=self.sensing_distance
+        self.elements.z +=self.get_config('my_element:sensing_distance')
         T0, S0 = self.interpolate_profiles()
         self.elements.salinity_above = S0
         self.elements.temperature_above = T0
 
-        self.elements.z -= 2*self.sensing_distance
+        self.elements.z -= 2*self.get_config('my_element:sensing_distance')
         T0, S0 = self.interpolate_profiles()
         self.elements.salinity_below = S0
         self.elements.temperature_below = T0
@@ -198,6 +201,25 @@ class MyElementDrift(OceanDrift):
         W = np.where(self.elements.light == self.elements.prefered_light, 0, np.where(self.elements.light > self.elements.prefered_light, -self.elements.vertical_swim_speed, self.elements.vertical_swim_speed))
         
         return W
+
+    def velocity_salinity_adjust(self, W):
+        
+        salinity_above = np.array(self.elements.salinity_above)
+        salinity_below = np.array(self.elements.salinity_below)
+        salinity_here = np.array(self.environment.sea_water_salinity)
+        # Set W to 0 if salinity conditions in the next layer are bad. 
+        # Set to negative if salinity in current layer is bad.
+        for i in range(len(W)):
+            if W[i] > 0 and salinity_above[i] < self.get_config('my_element:avoid_salinity_value'):
+                W[i] = 0
+            elif W[i] < 0 and salinity_below[i] < self.get_config('my_element:avoid_salinity_value'):
+                W[i] = 0
+            
+            if salinity_here[i] < self.get_config('my_element:avoid_salinity_value'):
+                W[i] = -np.array(self.elements.vertical_swim_speed)[i]
+            
+        return W
+
 
     def interpolate_profiles(self, z_index=None):
         Sprofiles = self.environment_profiles['sea_water_salinity']

@@ -295,7 +295,6 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                 Or to get output to both terminal and file:
                     [<filename.log>, logging.StreamHandler(sys.stdout)]
         """
-
         super().__init__()
 
         self.profiles_depth = None
@@ -335,7 +334,6 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         # Set up logging
         logformat = '%(asctime)s %(levelname)-7s %(name)s:%(lineno)d: %(message)s'
         datefmt = '%H:%M:%S'
-
         if loglevel < 10:  # 0 is NOTSET, giving no output
             loglevel = 10
         logger.setLevel(loglevel)
