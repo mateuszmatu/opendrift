@@ -597,7 +597,7 @@ class PhysicsMethods:
             mid_env, profiles, missing = self.env.get_environment(
                 ['x_sea_water_velocity', 'y_sea_water_velocity'],
                 self.time + self.time_step/2,
-                mid_lon, mid_lat, self.elements.z, profiles=None)
+                mid_lon, mid_lat, self.elements.z, profiles=None, element_ID=self.elements.ID)
             if self.get_config('drift:advection_scheme') == 'runge-kutta4':
                 logger.debug('Runge-kutta 4th order...')
                 x_vel2 = mid_env['x_sea_water_velocity']
@@ -612,7 +612,7 @@ class PhysicsMethods:
                 env2, profiles, missing = self.env.get_environment(
                     ['x_sea_water_velocity', 'y_sea_water_velocity'],
                     self.time + self.time_step/2,
-                    lon2, lat2, self.elements.z, profiles=None)
+                    lon2, lat2, self.elements.z, profiles=None, element_ID=self.elements.ID)
                 # Third step
                 x_vel3 = env2['x_sea_water_velocity']
                 y_vel3 = env2['y_sea_water_velocity']
@@ -626,7 +626,7 @@ class PhysicsMethods:
                 env3, profiles, missing = self.env.get_environment(
                     ['x_sea_water_velocity', 'y_sea_water_velocity'],
                     self.time + self.time_step,
-                    lon3, lat3, self.elements.z, profiles=None)
+                    lon3, lat3, self.elements.z, profiles=None, element_ID=self.elements.ID)
                 # Fourth step
                 x_vel4 = env3['x_sea_water_velocity']
                 y_vel4 = env3['y_sea_water_velocity']
@@ -814,6 +814,7 @@ class PhysicsMethods:
 
     def calculate_missing_environment_variables(self):
 
+        # TODO: we need a better mechanism to detect missing variables
         # Missing significant wave height
         if hasattr(self.environment,
                    'sea_surface_wave_significant_height') and \
@@ -822,7 +823,16 @@ class PhysicsMethods:
             logger.debug('Calculating Hs from wind, min: %f, mean: %f, max: %f' %
                           (Hs.min(), Hs.mean(), Hs.max()))
 
-        # Missing wave periode
+        # Missing wave direction related to previously calculated significant wave height.
+        # Set equal to wind direction. (Andrea Gierisch)
+        if hasattr(self.environment, 'sea_surface_wave_from_direction') and \
+                self.environment.sea_surface_wave_from_direction.max() == 0:
+            wave_direction = np.rad2deg(np.arctan2(self.environment.x_wind, self.environment.y_wind))
+            self.environment.sea_surface_wave_from_direction = -wave_direction
+            logger.warning('Setting wave direction equal to wind direction, min: %f, mean: %f, max: %f' %
+                (wave_direction.min(), wave_direction.mean(), wave_direction.max()))
+
+        # Missing wave period
         if hasattr(self.environment,
                    'sea_surface_wave_mean_period_from_variance_spectral_density_second_frequency_moment') and \
                 self.environment.sea_surface_wave_mean_period_from_variance_spectral_density_second_frequency_moment.max() == 0:
