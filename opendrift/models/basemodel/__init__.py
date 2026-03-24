@@ -450,15 +450,6 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                 'level': CONFIG_LEVEL_ADVANCED,
                 'description': 'Numerical advection scheme for ocean current advection'
             },
-            'drift:horizontal_diffusivity': {
-                'type': 'float',
-                'default': 0,
-                'min': 0,
-                'max': 100000,
-                'units': 'm2/s',
-                'description': 'Add horizontal diffusivity (random walk)',
-                'level': CONFIG_LEVEL_BASIC
-            },
             'drift:profiles_depth': {'type': 'float', 'default': 50, 'min': 0, 'max': None,
                 'level': CONFIG_LEVEL_ADVANCED, 'units': 'meters', 'description':
                 'Environment profiles will be retrieved from surface and down to this depth'},
@@ -685,7 +676,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                                      self.time,
                                      self.elements.lon,
                                      self.elements.lat,
-                                     self.elements.z)
+                                     self.elements.z,
+                                     element_ID = self.elements.ID)
             self.environment.land_binary_mask = en.land_binary_mask
 
         if i == 'stranding':  # Deactivate elements on land, but not in air
@@ -901,6 +893,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             self.start_time = min_time
             logger.debug('Setting simulation start time to %s' % str(min_time))
 
+        return elements.ID
+
     def release_elements(self):
         """Activate elements which are scheduled within following timestep."""
 
@@ -975,7 +969,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                                         lon=lon,
                                         lat=lat,
                                         z=0 * lon,
-                                        time=land_reader.start_time)[0]['land_binary_mask']
+                                        time=land_reader.start_time,
+                                        element_ID=self.elements.ID)[0]['land_binary_mask']
             if land.max() == 0:
                 logger.info('All points are in ocean')
                 return lon, lat, None
@@ -1001,7 +996,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                                             lon=longrid,
                                             lat=latgrid,
                                             z=0 * longrid,
-                                            time=land_reader.start_time)[0]['land_binary_mask']
+                                            time=land_reader.start_time,
+                                            element_ID=self.elements.ID)[0]['land_binary_mask']
             if landgrid.size == 0:
                 # Need to catch this before trying .min() on it...
                 logger.warning('Land grid has zero size, cannot move elements.')
@@ -1210,10 +1206,23 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             if prop in self.ElementType.variables:
                 kwargs[prop] = seed_config[f'seed:{prop}']['value']
 
+        environment = kwargs.pop('environment', None)
+
         # Creating and scheduling elements
         elements = self.ElementType(lon=lon, lat=lat, **kwargs)
         time_array = np.array(time)
-        self.schedule_elements(elements, time)
+        new_element_IDs = self.schedule_elements(elements, time)
+
+        if environment is not None:
+            logger.debug(f'enviroment is provided to seed method, adding constant reader for {environment}')
+            from opendrift.readers.reader_constant import Reader as ConstantReader
+            environment['element_ID'] = new_element_IDs
+            cr = ConstantReader(environment)
+            # Must change mode tomporarily to be allowed to add a new reader
+            tmp_mode = self.mode
+            self.mode = opendrift.models.basemodel.Mode.Config
+            self.add_reader(cr)
+            self.mode = tmp_mode
 
     @require_mode(mode=Mode.Ready)
     def seed_cone(self, lon, lat, time, radius=0, number=None, **kwargs):
@@ -1457,6 +1466,16 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         if number is None:
             number = self.get_config('seed:number')
 
+        lonpoints, latpoints = self.points_within_polygon(lons, lats, number)
+
+        # Finally seed at calculated positions
+        self.seed_elements(lonpoints, latpoints, number=number, **kwargs)
+
+    @staticmethod
+    def points_within_polygon(lons, lats, number):
+        """Return a number of positions (lon, lat) within given polygon.
+
+            Helper method for seed_within_polygon"""
         lons = np.asarray(lons)
         lats = np.asarray(lats)
         if len(lons) < 3:
@@ -1524,8 +1543,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             else:
                 break
 
-        # Finally seed at calculated positions
-        self.seed_elements(lonpoints, latpoints, number=number, **kwargs)
+        return lonpoints, latpoints
 
     @require_mode(mode=Mode.Ready)
     def seed_from_wkt(self, wkts, time, **kwargs):
@@ -1595,13 +1613,11 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         for e, (n, polygon) in enumerate(zip(number_per_polygon, g_lonlat.geometry.explode(index_parts=False))):
             logger.info(f'Seeding {n} elements within polygon number {e+1} of area {areas[e]/1e6} km2')
             lons, lats = polygon.exterior.coords.xy
-            all_lons = np.append(all_lons, lons)
-            all_lats = np.append(all_lats, lats)
-        self.seed_within_polygon(lons=all_lons,
-                                 lats=all_lats,
-                                 number=number,
-                                 time=time,
-                                 **kwargs)
+            lonpoints, latpoints = self.points_within_polygon(lons, lats, n)
+            all_lons = np.append(all_lons, lonpoints)
+            all_lats = np.append(all_lats, latpoints)
+
+        self.seed_elements(lon=all_lons, lat=all_lats, number=number, time=time, **kwargs)
 
     @require_mode(mode=Mode.Ready)
     def seed_letters(self, text, lon, lat, time, number, scale=1.2):
@@ -1651,8 +1667,13 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
 
     def horizontal_diffusion(self):
         """Move elements with random walk according to given horizontal diffuivity."""
-        D = self.get_config('drift:horizontal_diffusivity')
-        if D == 0:
+        if 'horizontal_diffusivity' not in self.required_variables:
+            logger.debug('No horizontal diffusion')
+            return
+        D = self.environment.horizontal_diffusivity
+        if len(D) == 0:
+            return  # no active elements
+        if D.max() == 0:
             logger.debug('Horizontal diffusivity is 0, no random walk.')
             return
         if self.num_elements_active() == 0:
@@ -1664,9 +1685,12 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         y_vel = self.elements.moving * np.sqrt(2 * D / dt) * np.random.normal(
             scale=1, size=self.num_elements_active())
         speed = np.sqrt(x_vel * x_vel + y_vel * y_vel)
+        if D.min() == D.max():
+            dstring = f'{D.min()}'
+        else:
+            dstring = f'{D.min()} - {D.max()}'
         logger.debug(
-            'Moving elements according to horizontal diffusivity of %s, with speeds between %s and %s m/s'
-            % (D, speed.min(), speed.max()))
+            f'Moving elements according to horizontal diffusivity of {dstring}, with speeds between {speed.min()} and {speed.max()} m/s')
         self.update_positions(x_vel, y_vel)
 
     def deactivate_elements(self, indices, reason='deactivated'):
@@ -2138,7 +2162,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                                          self.elements.lat,
                                          self.elements.z,
                                          self.required_profiles,
-                                         self.profiles_depth)
+                                         self.profiles_depth,
+                                         element_ID = self.elements.ID)
 
                 self.calculate_missing_environment_variables()
 
@@ -3333,6 +3358,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             latmax = np.maximum(latmax, other.result.lat.max())
 
             # Find map coordinates of comparison simulations
+            cd['dataset'] = other.result
             cd['x_other'] = other.result.lon.copy()
             cd['y_other'] = other.result.lat.copy()
             cd['x_other_deactive'], cd['y_other_deactive'] = \
@@ -3374,6 +3400,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
              show_elements=True,
              show_trajectories=True,
              show_initial=True,
+             convex_hull=False,
              density_pixelsize_m=1000,
              lalpha=None,
              bgalpha=.8,
@@ -3514,6 +3541,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                             label='_nolegend_',
                             linewidth=linewidth,
                             transform=self.crs_lonlat)
+                    if convex_hull is True:
+                        self.result.isel(time=-1).traj.plot.convex_hull(color=linecolor)
                 else:
                     with np.errstate(invalid="ignore"):
                         ax.plot(x,
@@ -3522,6 +3551,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                                 alpha=alpha,
                                 linewidth=linewidth,
                                 transform=self.crs_lonlat)
+                    if convex_hull is True:
+                        self.result.isel(time=-1).traj.plot.convex_hull(color=linecolor)
             else:
                 #colorbar = True
                 # Color lines according to given parameter
@@ -3574,7 +3605,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         else:
             label_initial = None
             label_active = None
-            color_initial = 'gray'
+            color_initial = self.status_colors['initial']
             color_active = 'gray'
         if show_elements is True:
             if show_initial is True:
@@ -3676,6 +3707,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                            linewidths=.2,
                            color=self.plot_comparison_colors[i + 1],
                            transform=self.crs_lonlat)
+                if convex_hull is True:
+                    c['dataset'].isel(time=-1).traj.plot.convex_hull(color=self.plot_comparison_colors[i + 1])
 
         background_zorder = kwargs.pop('background_zorder', 0)
         if background is not None:
@@ -3841,7 +3874,10 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             variable = background[0]  # A vector is requested
         else:
             variable = background  # A scalar is requested
-        for readerName in self.env.readers:
+        readers = self.env.priority_list[variable] + list(self.env.readers)
+        for readerName in readers:
+            if readerName == 'global_landmask':
+                continue  # Not suitable for background field
             reader = self.env.readers[readerName]
             if variable in reader.variables:
                 if time is None or reader.start_time is None or (

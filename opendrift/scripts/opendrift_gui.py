@@ -345,8 +345,8 @@ class OpenDriftGUI(tk.Tk):
         ##############
         # Output box
         ##############
-        self.text = tk.Text(self.output, wrap="word", height=18)
-        self.text.grid(row=60, columnspan=6, sticky='nsw')
+        self.text = tk.Text(self.output, wrap="word", height=50)
+        self.text.grid(row=60, columnspan=10, sticky='nsw')
         self.text.tag_configure("stderr", foreground="#b22222")
         if os.getenv('OPENDRIFT_GUI_OUTPUT', 'gui') == 'gui':
             sys.stdout = TextRedirector(self.text, "stdout")
@@ -378,7 +378,26 @@ class OpenDriftGUI(tk.Tk):
 
         ##########################
         try:
-            if datetime.now().month == 12 and datetime.now().day > 10:
+            from dateutil.easter import easter
+            easter_sunday = easter(datetime.now().year)
+            easter = (datetime.now().date() > easter_sunday - timedelta(days=8) and
+                      datetime.now().date() < easter_sunday + timedelta(days=2))
+            christmas = datetime.now().month == 12 and datetime.now().day > 10
+            if easter:
+                self.output.configure(bg='#FFF9C4')
+                self.duration.configure(bg='#FFF9C4')
+                self.seed.configure(bg='#FFF9C4')
+                self.top.configure(bg='#FFD6E7')
+                self.start.configure(bg='#B3E5FC')
+                self.end.configure(bg='#B3E5FC')
+                self.end_t.configure(bg='#B3E5FC')
+                startlabel.configure(bg='#B3E5FC')
+                endlabel.configure(bg='#B3E5FC')
+                check_seed.configure(bg='#B3E5FC')
+                img = ImageTk.PhotoImage(Image.open(
+                    opendrift.test_data_folder +
+                    '../../docs/opendrift_logo_easter.png').resize((200, 200)))
+            elif christmas:
                 img = ImageTk.PhotoImage(Image.open(
                     opendrift.test_data_folder +
                                          '../../docs/hohohOpenDrift.jpg').resize((200, 200)))
@@ -387,7 +406,7 @@ class OpenDriftGUI(tk.Tk):
                 img = ImageTk.PhotoImage(Image.open(
                     opendrift.test_data_folder +
                                          '../../docs/opendrift_logo.png'))
-            self.logo_image=tk.Label(self.logo, image=img)
+            self.logo_image=tk.Label(self.logo, image=img, bd=0)
             self.logo_image.image = img
             self.logo_image.grid(row=0, column=0)
         except Exception as e:
@@ -423,9 +442,13 @@ class OpenDriftGUI(tk.Tk):
 
     def handle_result(self, command):
 
+        mode = self.o.mode  # To be reset after plotting
+        self.o.mode = Mode.Result
         from os.path import expanduser
         homefolder = expanduser("~")
         filename = homefolder + '/' + self.simulationname
+        background_variable = self._background_fields[self.background_field.get()]['variable']
+        background_label = self._background_fields[self.background_field.get()]['label']
 
         if command[0:4] == 'save':
             plt.switch_backend('agg')
@@ -434,11 +457,11 @@ class OpenDriftGUI(tk.Tk):
 
         if command == 'saveanimation':
             filename = filename + '.mp4'
-            self.o.animation(filename=filename)
+            self.o.animation(filename=filename, background=background_variable, clabel=background_label)
             print('='*30 + '\nAnimation saved to file:\n'
                   + filename + '\n' + '='*30)
         elif command == 'showanimation':
-            self.o.animation()
+            self.o.animation(background=background_variable, clabel=background_label)
         elif command == 'saveplot':
             filename = filename + '.png'
             self.o.plot(filename=filename)
@@ -490,6 +513,8 @@ class OpenDriftGUI(tk.Tk):
             except Exception as e:
                 print('Could not copy file:')
                 print(e)
+
+        self.o.mode = mode  # resetting
 
     def validate_config(self, value_if_allowed, prior_value, key):
         """From config menu selection."""
@@ -846,6 +871,20 @@ class OpenDriftGUI(tk.Tk):
         self.results = tk.Frame(self.seed, bd=2,
                                relief=tk.FLAT, padx=5, pady=0)
         self.results.grid(row=70, column=3, columnspan=1, sticky='ew')
+
+        self._background_fields = {
+            'No background': {'label': None, 'variable': None},
+            'Current': {'label': 'Surface current  [m/s]',
+                        'variable': ['x_sea_water_velocity', 'y_sea_water_velocity']},
+            'Wind': {'label': 'Wind speed  [m/s]',
+                     'variable': ['x_wind', 'y_wind']}
+            }
+        self.background_field = tk.StringVar()
+        self.background_field.set(list(self._background_fields)[0])
+        self.background_field_drop = tk.OptionMenu(self.results, self.background_field,
+            *(list(self._background_fields)))
+        self.background_field_drop.grid(row=5, column=1)
+
         tk.Button(self.results, text='Show animation',
                   command=lambda: self.handle_result(
                     'showanimation')).grid(row=10, column=1)
