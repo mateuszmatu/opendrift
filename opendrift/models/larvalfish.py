@@ -209,7 +209,7 @@ class LarvalFish(OceanDrift):
         # Hatching of eggs
         eggs = np.where(self.elements.hatched==0)[0]
         if len(eggs) > 0:
-            amb_duration = np.exp(3.65 - 0.4*self.environment.sea_water_temperature[eggs]) #np.exp(3.65 - 0.145*self.environment.sea_water_temperature[eggs]) # Total egg development time (days) according to ambient temperature (Ellertsen et al. 1988)
+            amb_duration = np.exp(3.65 - 0.145*self.environment.sea_water_temperature[eggs]) # Total egg development time (days) according to ambient temperature (Ellertsen et al. 1988)
             days_in_timestep = self.time_step.total_seconds()/(60*60*24)  # The fraction of a day completed in one time step
             amb_fraction = days_in_timestep/amb_duration # Fraction of development time completed during present time step
             self.elements.stage_fraction[eggs] += amb_fraction # Add fraction completed during present timestep to cumulative fraction completed
