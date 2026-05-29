@@ -50,10 +50,7 @@ class TobisElement(Lagrangian3DArray):
                     'default': 0}),
         ('weight', {'dtype': np.float32,
                     'units': 'mg',
-                    'default': 0.08}),
-        ('survival', {'dtype': np.float32,  # Not yet used
-                      'units': '',
-                      'default': 1.})])
+                    'default': 0.08})])
 
 
 class Tobis(OceanDrift):
@@ -301,7 +298,7 @@ class Tobis(OceanDrift):
         # Vertical migration of Larvae
         # Swim function from Peck et al. 2006
         L = self.elements.length[larvae]
-        swim_speed = (0.261*(L**(1.552*L**(-0.08))) - 5.289/L) / 1000
+        swim_speed = (0.261*(L**(1.552*L**(-0.08))) - 5.289/L) / 1000  # TODO: this was here previously
         f = self.get_config('IBM:fraction_of_timestep_swimming')
         max_migration_per_timestep = f*swim_speed*self.time_step.total_seconds()
 
@@ -333,7 +330,6 @@ class Tobis(OceanDrift):
         if self.get_config('drift:egg_advection') is False:
             self.freeze_egg()
         self.advect_ocean_current()
-        print(self.elements.length)
 
         # Stokes drift
         self.stokes_drift()
