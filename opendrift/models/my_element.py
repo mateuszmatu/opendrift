@@ -299,8 +299,6 @@ class MyElementDrift(OceanDrift):
 
         if self.get_config('drift:vertical_mixing') is True:
             self.vertical_mixing()
-        else:
-            self.vertical_buoyancy()
         # Vertical advection
         self.vertical_advection()
         
