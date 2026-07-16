@@ -173,7 +173,7 @@ class MyElementDrift(OceanDrift):
         if self.get_config('my_element:light_attraction') is True:
             W = self.velocity_light()
         else:
-            W = np.zeros_like(len(self.elements.swim_speed))
+            W = np.zeros_like(len(self.elements.vertical_swim_speed))
         if self.get_config('my_element:avoid_salinity') is True:
             W = self.velocity_salinity_adjust(W)
 
