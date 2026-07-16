@@ -125,6 +125,9 @@ class MyElementDrift(OceanDrift):
                                   'min': 0,
                                   'max': 100,
                                   'level': CONFIG_LEVEL_ADVANCED},
+            'my_element:light_attraction': {'type':'bool', 'default': False,
+                                            'description': 'Swim towards specific light value',
+                                            'level': CONFIG_LEVEL_ADVANCED},
             'my_element:avoid_salinity': {'type':'bool', 'default': False,
                                             'description': 'Turn on salinity avoidance',
                                             'level': CONFIG_LEVEL_ADVANCED},
@@ -167,7 +170,10 @@ class MyElementDrift(OceanDrift):
 
     def update_terminal_velocity(self, Tprofiles=None,
                                  Sprofiles=None, z_index=None):
-        W = self.velocity_light()
+        if self.get_config('my_element:light_attraction') is True:
+            W = self.velocity_light()
+        else:
+            W = 0
         if self.get_config('my_element:avoid_salinity') is True:
             W = self.velocity_salinity_adjust(W)
 
