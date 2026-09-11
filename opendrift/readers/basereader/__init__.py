@@ -28,9 +28,6 @@ from matplotlib.patches import Polygon
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
-from .structured import StructuredReader
-from .unstructured import UnstructuredReader
-from .continuous import ContinuousReader
 from .variables import Variables
 from .consts import *
 from ..operators.ops import Combine, Filter
@@ -190,7 +187,10 @@ class BaseReader(Variables, Combine, Filter):
             self.activate_environment_mapping(m)
 
     def y_is_north(self):
-        if (self.proj.crs.is_geographic and 'ob_tran' not in self.proj4) or '+proj=merc' in self.proj.srs:
+        if self.proj is None and self.proj4 is not None:
+            if '+proj=merc' in self.proj4 or '+proj=latlon' in self.proj4:
+                return True
+        elif (self.proj.crs.is_geographic and 'ob_tran' not in self.proj4) or '+proj=merc' in self.proj.srs:
             return True
         else:
             return False
@@ -289,8 +289,7 @@ class BaseReader(Variables, Combine, Filter):
             facecolor=cfeature.COLORS['land'],
             edgecolor='black')
 
-        gl = ax.gridlines(ccrs.PlateCarree())
-        gl.top_labels = False
+        gl = ax.gridlines(ccrs.PlateCarree(), draw_labels=['left', 'bottom'], x_inline=False, y_inline=False)
 
         # Get boundary
         if self.global_coverage():

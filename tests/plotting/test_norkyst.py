@@ -1,9 +1,9 @@
 import pytest
 
+from datetime import datetime
 from opendrift import test_data_folder as tdf
 from opendrift.readers import reader_netCDF_CF_generic
 from opendrift.models.oceandrift import OceanDrift
-
 
 @pytest.mark.slow
 @pytest.mark.mpl_image_compare

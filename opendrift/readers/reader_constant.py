@@ -14,16 +14,16 @@
 #
 # Copyright 2015, Knut-Frode Dagestad, MET Norway
 
-from opendrift.readers.basereader import BaseReader, ContinuousReader
+from opendrift.readers.basereader.continuous import ContinuousReader
 import numpy as np
 
-
-class Reader(BaseReader, ContinuousReader):
+class Reader(ContinuousReader):
     '''A very simple reader that always give the same value for its variables'''
 
-    def __init__(self, parameter_value_map):
+    def __init__(self, *args, **kwargs):
         """init with a map {'variable_name': value, ...}
         
+        or as variable_name1=value1, variable_name2=value2, ...
         value can also be an array, and in this case the map/dictionary
         must also include `element_ID` which corresponds to the elements that
         shall receive the actual value:
@@ -33,6 +33,10 @@ class Reader(BaseReader, ContinuousReader):
 
         """
 
+        if len(args) == 1 and isinstance(args[0], dict):
+            parameter_value_map = args[0]
+        elif kwargs:
+            parameter_value_map = kwargs
         for key, var in parameter_value_map.items():
             parameter_value_map[key] = np.atleast_1d(var)
         self._parameter_value_map = parameter_value_map

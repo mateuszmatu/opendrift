@@ -171,6 +171,7 @@ class ReaderDomain(Timeable):
         """String representation of the current reader."""
         outStr = '===========================\n'
         outStr += 'Reader: ' + self.name + '\n'
+        outStr += 'Reader type: ' + self.__class__.__module__ + '\n'
         outStr += 'Projection: \n  ' + self.proj4 + '\n'
         outStr += 'Coverage: [%s]\n' % self._coverage_unit_()
         shape = self.shape
@@ -534,12 +535,15 @@ class Variables(ReaderDomain):
                 #    'active': True
                 #    }
             if len(vector_pair) >= 4:
-                self.environment_mappings[str(vector_pair[0:2])] = {
-                    'input': [vector_pair[2], vector_pair[3]],
-                    'output': [vector_pair[0], vector_pair[1]],
-                    'method': vector_from_speed_and_direction,
-                    'active': True
-                    }
+                if self.y_is_north():
+                    self.environment_mappings[str(vector_pair[0:2])] = {
+                        'input': [vector_pair[2], vector_pair[3]],
+                        'output': [vector_pair[0], vector_pair[1]],
+                        'method': vector_from_speed_and_direction,
+                        'active': True
+                        }
+                else:
+                    logger.debug('Skipping calculation of vector component, since y is not north')
             if len(vector_pair) > 2:
                 self.environment_mappings[vector_pair[2]] = {
                     'input': [vector_pair[0], vector_pair[1]],

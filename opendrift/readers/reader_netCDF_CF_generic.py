@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 
 import pandas as pd
 import xarray as xr
-from opendrift.readers.basereader import BaseReader, StructuredReader
+from opendrift.readers.basereader.structured import StructuredReader
 from opendrift.readers import open_dataset_opendrift, datetime_from_variable, \
                               add_standard_name_for_surface_grib_variables
 
 
-class Reader(StructuredReader, BaseReader):
+class Reader(StructuredReader):
     """
     A reader for `CF-compliant <https://cfconventions.org/>`_ netCDF files. It can take a single file, a file pattern, a URL or an xarray Dataset.
 
@@ -288,8 +288,8 @@ class Reader(StructuredReader, BaseReader):
                     if self.proj4 is None:
                         self.proj4 = '+proj=latlong'
                 else:
-                    self.dimensions['x'] = lon_var.dims[0]
-                    self.dimensions['y'] = lat_var.dims[1]
+                    self.dimensions['x'] = lon_var.dims[1]
+                    self.dimensions['y'] = lat_var.dims[0]
                     self.projected = False
                     self.proj = None
                     self.proj4 = None
@@ -396,7 +396,10 @@ class Reader(StructuredReader, BaseReader):
                 logger.debug(f'{warning}: Using single time dimension found in detected variables: {variable_time_dimensions}')
                 self.dimensions['time'] = variable_time_dimensions[0]
             elif len(variable_time_dimensions) > 1:
-                raise ValueError(f'{warning}, and also several time dimensions used by detected variables: {variable_time_dimensions}')
+                if 'time' in variable_time_dimensions:
+                    self.dimensions['time'] = 'time'
+                else:
+                    raise ValueError(f'{warning}, and also several time dimensions used by detected variables: {variable_time_dimensions}')
 
         # Run constructor of parent Reader class
         super().__init__()
@@ -413,8 +416,10 @@ class Reader(StructuredReader, BaseReader):
 
         if hasattr(self, 'z') and (z is not None):
             # Find z-index range
-            # NB: may need to flip if self.z is ascending
-            indices = np.searchsorted(-self.z, [-z.min(), -z.max()])
+            if self.z[0] > self.z[-1]:  # descending
+                indices = np.searchsorted(-self.z, [-z.min(), -z.max()])
+            else:  # ascending
+                indices = np.searchsorted(self.z, [z.min(), z.max()])
             indz = np.arange(np.maximum(0, indices.min() - 1 -
                                         self.verticalbuffer),
                              np.minimum(len(self.z), indices.max() + 1 +

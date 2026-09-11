@@ -37,6 +37,7 @@ from typing import Union, List
 import traceback
 import inspect
 import psutil
+from importlib.resources import files
 
 from opendrift.models.basemodel.environment import Environment
 from opendrift.readers import reader_global_landmask
@@ -94,10 +95,10 @@ def coastline_crossing(lon1, lat1, lon2, lat2, step_degrees, land_side=True):
             Last position in water (if land_side is False) or first position on land (if land_side is True (default)) along transect
     """
 
-    lon1 = np.atleast_1d(lon1)
-    lat1 = np.atleast_1d(lat1)
-    lon2 = np.atleast_1d(lon2)
-    lat2 = np.atleast_1d(lat2)
+    lon1 = np.atleast_1d(np.asarray(lon1, dtype=float))
+    lat1 = np.atleast_1d(np.asarray(lat1, dtype=float))
+    lon2 = np.atleast_1d(np.asarray(lon2, dtype=float))
+    lat2 = np.atleast_1d(np.asarray(lat2, dtype=float))
     if land_side is True:
         lon_c = lon2
         lat_c = lat2
@@ -622,6 +623,13 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         '''Make readers from a file containing list of URLs or paths to netCDF datasets'''
         self.env.add_readers_from_file(*args, **kwargs)
 
+    def default_readers(self):
+        '''Return list of default readers from opendrift.scripts.data_sources.txt'''
+        with open(files('opendrift.scripts').joinpath('data_sources.txt')) as fd:
+            default_readers = fd.readlines()
+        default_readers = [r.strip() for r in default_readers if not r.startswith('#')]
+        return default_readers
+
     # To be overloaded by sublasses, but this parent method must be called
     def prepare_run(self):
         # Copy profile_depth from config
@@ -659,7 +667,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             for var in self._elements_previous:
                 self._elements_previous[var][self.elements.ID] = getattr(self.elements, var)
 
-    def interact_with_coastline(self, final=False):
+    def interact_with_coastline(self, final=False, intermediate_simulation=False):
         """Coastline interaction according to configuration setting"""
 
         if self.num_elements_active() == 0:
@@ -670,6 +678,9 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         i = self.get_config('general:coastline_action')
         if i == 'none':  # Do nothing
             return
+
+        if intermediate_simulation is True:
+            return  # Coastline interaction is left for next simulationstarting from saved output
 
         coastline_approximation_precision = self.get_config('general:coastline_approximation_precision')
 
@@ -1094,6 +1105,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         lat = np.atleast_1d(lat).ravel()
         radius = np.atleast_1d(radius).ravel()
         time = np.atleast_1d(time)
+        time = pd.to_datetime(time).to_pydatetime()
 
         if lat.max() > 90 or lat.min() < -90:
             raise ValueError('Latitude must be between -90 and 90 degrees')
@@ -1734,6 +1746,72 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         ds = xr.open_dataset(filename)
         self.seed_from_dataset(ds, trajectory_time_index=trajectory_time_index, time=time, keep_properties=keep_properties, **kwargs)
 
+    @require_mode(mode=Mode.Ready)
+    def seed_from_dataset(self, ds, trajectory_time_index=-1, time=None, keep_properties=True, **kwargs):
+        """Seed elements from OpenDrift dataset
+
+         Arguments:
+            ds                      (DataArray)         :   DataArray from previous OpenDrift run.
+            trajectory_time_index   (int)               :   Time index from which to continue OpenDrift run.
+            time                    (datenum or list)   :   Time to initiate particles. If None, uses time from trajectory_time_index.
+            keep_properties         (bool)              :   Keep element properties from DataArray. If False, overrides properties with new ones.
+        """
+        ds = ds.isel(time=trajectory_time_index)
+
+        # get seed time
+        if time is None:
+            time = pd.to_datetime(ds.time.values)
+
+        # Dropping trajectories which had not been initiated at selected time, e.g. for continuous release.
+        ds = ds.where(ds.age_seconds >= 0, drop=True)
+
+        logger.info('Using positions from dataset at time %s' % (str(time)))
+
+        try:
+            file_class = ds.opendrift_class
+            current_class = self.__class__.__name__
+
+            # check if model is the same
+            if file_class != current_class:
+                logger.warning('Current model %s is not equal to model used in provided dataset %s' % (current_class, file_class))
+        except:
+            logger.warning('Could not find opendrift_class in provided dataset')
+
+        if keep_properties:
+            # Making dictionary with previous properties
+            prop_dict = {}
+            for key in self.elements.variables.keys():
+                #omitting lon and lat since these are provided anyways
+                if key == 'lon' or key == 'lat':
+                    pass
+                else:
+                    if key in ds:
+                        prop_dict[key] = ds[key].values
+
+            logger.info('Seeding %i particles from dataset' %(len(ds.lon)))
+            logger.info('Using values from dataset for element properties: ')
+            logger.info('%s' % (str([key for key in prop_dict.keys()])))
+            self.seed_elements(ds.lon, ds.lat, time=time, **prop_dict)
+
+        else:
+            logger.info('Using only lon, lat from provided dataset. Omitting particle properties from previous run')
+            self.seed_elements(ds.lon, ds.lat, time=time, **kwargs)
+
+
+    @require_mode(mode=Mode.Ready)
+    def seed_from_file(self, filename, trajectory_time_index=-1, time=None, keep_properties=True, **kwargs):
+        """Seed elements from OpenDrift output netCDF file
+
+        Arguments:
+            filename                (str)               :   Name of netCDF file with particle positions.
+            trajectory_time_index   (int)               :   Time index from which to continue OpenDrift run.
+            time                    (datenum or list)   :   Time to initiate particles. If None, uses time from trajectory_time_index.
+            keep_properties         (bool)              :   Keep element properties from file. If False, overrides properties with new ones.
+        """
+        logger.info('Seeding elements from previous run in %s' %(filename))
+        ds = xr.open_dataset(filename)
+        self.seed_from_dataset(ds, trajectory_time_index=trajectory_time_index, time=time, keep_properties=keep_properties, **kwargs)
+
     def horizontal_diffusion(self):
         """Move elements with random walk according to given horizontal diffuivity."""
         if 'horizontal_diffusivity' not in self.required_variables:
@@ -1826,7 +1904,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             outfile=None,
             export_variables=None,
             export_buffer_length=100,
-            stop_on_error=False):
+            stop_on_error=False,
+            intermediate_simulation=False):
         """Start a trajectory simulation, after initial configuration.
 
         Performs the main loop:
@@ -1860,6 +1939,9 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                 - end_time: datetime object defining the end of the simulation
             export_variables: list of variables and parameter names to be
                 saved to file. Default is None (all variables are saved)
+            intermediate_simulation: if set to True, coastline_interaction is skipped
+                on final time step, to be performed after a new simulation is started
+                from the saved state.
         """
 
         # Exporting software and hardware specification, for possible debugging
@@ -1952,6 +2034,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         ########################
         # Simulation duration
         ########################
+        if hasattr(end_time, 'values'):
+            end_time = pd.Timestamp(end_time.values).to_pydatetime()
         if time_step.days < 0:
             logger.info(
                 'Backwards simulation, starting from last seeded element')
@@ -2141,9 +2225,26 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             ('land_binary_mask' in self.required_variables):
             #('land_binary_mask' not in self.fallback_values) and \
             self.timer_start('preparing main loop:moving elements to ocean')
-            self.elements_scheduled.lon, self.elements_scheduled.lat, land_indices = \
-                self.closest_ocean_points(self.elements_scheduled.lon,
-                                          self.elements_scheduled.lat)
+            # After a restart (seed_from_file / seed_from_dataset / ...), elements seeded from
+            # a previous run must keep their saved lon/lat to preserve their original trajectory.
+
+            # New seeds are identified by age_seconds <= 0 (or missing, non-finite)
+            age = np.asarray(getattr(
+                self.elements_scheduled, 'age_seconds',
+                np.zeros(self.num_elements_scheduled())))
+            newseed = ~np.isfinite(age) | (age <= 0)
+            
+            # Move only newly seeded particles on land to ocean
+            lon = np.array(self.elements_scheduled.lon, copy=True, dtype=float)
+            lat = np.array(self.elements_scheduled.lat, copy=True, dtype=float)
+            orig_lon, orig_lat = lon.copy(), lat.copy()
+            
+            lon, lat, _ = self.closest_ocean_points(lon, lat)
+            if np.any(~newseed):
+                lon[~newseed] = orig_lon[~newseed]
+                lat[~newseed] = orig_lat[~newseed]
+            self.elements_scheduled.lon = lon
+            self.elements_scheduled.lat = lat
             self.timer_end('preparing main loop:moving elements to ocean')
 
 
@@ -2296,7 +2397,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         self.timer_start('cleaning up')
         logger.debug('Cleaning up')
 
-        self.interact_with_coastline(final=True)
+        self.interact_with_coastline(final=True, intermediate_simulation=intermediate_simulation)
         self.timer_end('cleaning up')
         self.timer_end('total time')
         self.state_to_buffer(final=True)  # Append final status to buffer
@@ -2344,12 +2445,25 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
         # Deacticate any elements outside validity domain set by user
         if self.validity_domain is not None:
             W, E, S, N = self.validity_domain
+            lon = self.elements.lon
+            if E is not None and E > 180 and np.any(lon < 0):
+                # Elements have crossed the dateline and wrapped to the
+                # native -180..180 convention (lon<0), while E>180 indicates
+                # that drift:deactivate_east_of was given in 0-360 convention.
+                # Convert wrapped longitudes back to 0-360 before comparing
+                # against either boundary, so that the west boundary check
+                # below does not misinterpret wrapped (now negative) values
+                # as having moved too far west.
+                logger.info(
+                    'Some elements have crossed the dateline (lon<0), while '
+                    'drift:deactivate_east_of=%s is given in 0-360 convention. '
+                    'Converting wrapped longitudes to 0-360 convention before '
+                    'checking against deactivate_east_of/west_of.' % E)
+                lon = np.where(lon < 0, lon + 360, lon)
             if W is not None:
-                self.deactivate_elements(self.elements.lon < W,
-                                         reason='outside')
+                self.deactivate_elements(lon < W, reason='outside')
             if E is not None:
-                self.deactivate_elements(self.elements.lon > E,
-                                         reason='outside')
+                self.deactivate_elements(lon > E, reason='outside')
             if S is not None:
                 self.deactivate_elements(self.elements.lat < S,
                                          reason='outside')
@@ -2586,7 +2700,10 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                 lscale = 'auto'
 
         meanlat = (latmin + latmax) / 2
-        aspect_ratio = float(latmax - latmin) / (float(lonmax - lonmin))
+        if lonmax == lonmin:
+            aspect_ratio = 1
+        else:
+            aspect_ratio = float(latmax - latmin) / (float(lonmax - lonmin))
         aspect_ratio = aspect_ratio / np.cos(np.radians(meanlat))
         if 'figsize' in kwargs:
             figsize = kwargs['figsize']
@@ -2603,8 +2720,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             lonmax -= .1  # To avoid problem with Cartopy
         ax.set_extent([lonmin, lonmax, latmin, latmax], crs=self.crs_lonlat)
 
-        gl = ax.gridlines(self.crs_lonlat, draw_labels=True, xlocs=xlocs, ylocs=ylocs)
-        gl.top_labels = None
+        gl = ax.gridlines(self.crs_lonlat, draw_labels=['left', 'bottom'], xlocs=xlocs, ylocs=ylocs)
 
         if 'ocean_color' in kwargs:
             ax.patch.set_facecolor(kwargs['ocean_color'])
@@ -2726,7 +2842,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                   vmax=None,
                   drifter=None,
                   shapefiles=None,
-                  skip=None,
+                  skip='auto',
                   scale=None,
                   color=False,
                   clabel=None,
@@ -2961,6 +3077,10 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                                vmax=vmax,
                                cmap=cmap,
                                transform=self.crs_lonlat)
+            if skip == 'auto':  # We use a suitable number of vectors
+                ny, nx = scalar.shape
+                skip = max(1, max(nx, ny) // 30)
+
             if type(background) is list:
                 bg_quiv = ax.quiver(map_x[::skip, ::skip],
                                     map_y[::skip, ::skip],
@@ -3106,6 +3226,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                 drifter = [drifter]
             drifter_pos = [None] * len(drifter)
             drifter_line = [None] * len(drifter)
+            drifter = [d.copy() for d in drifter]  # Avoid modifying original
             for drnum, dr in enumerate(drifter):
                 # Interpolate drifter time series onto simulation times
                 sts = (self.result.time - self.result.time[0]) / np.timedelta64(1, 's')
@@ -3189,6 +3310,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
     def __save_or_plot_animation__(self, figure, plot_timestep, filename,
                                    frames, fps, interval, blit):
 
+        figure.canvas.draw()
+        figure.set_layout_engine('none')
         if filename is not None or 'sphinx_gallery' in sys.modules:
             logger.debug("Saving animation..")
             self.__save_animation__(figure,
@@ -3538,6 +3661,8 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
             kwargs.update(compare_args)
 
         if drifter is not None:
+            if isinstance(drifter, xr.Dataset):  # Temporary - should use TrajAn
+                drifter = {'time': drifter.time.squeeze(), 'lon': drifter.lon.squeeze(), 'lat': drifter.lat.squeeze()}
             # Extend map coverage to cover provided trajectory
             # TODO: drifter should be list of dictionaries
             ttime = np.array(drifter['time'], dtype=self.result.time.dtype)
@@ -3762,6 +3887,7 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
                 ax.plot(c['x_other'].T,
                         c['y_other'].T,
                         color=self.plot_comparison_colors[i + 1],
+                        alpha=alpha,
                         linestyle='-',
                         label='_nolegend_',
                         linewidth=linewidth,
@@ -4917,6 +5043,15 @@ class OpenDriftSimulation(PhysicsMethods, Timeable, Configurable):
     def _evaluate_key(self, key):
         # Presently assuming that key is a config key
         return self.get_config(key, 'not_implemented')
+
+    def _set_mode(self, mode):
+
+        mode = getattr(Mode, mode.capitalize(), None)
+
+        if mode is None:
+            raise ValueError(f'Available modes are {list(Mode.__members__.keys())}')
+
+        self.mode = mode
 
 def evaluate_conditional(key, operator, value, self=None):
     """Evaluate a condition as True or False

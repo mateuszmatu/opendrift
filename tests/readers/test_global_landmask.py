@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from . import *
+from datetime import datetime
 from opendrift.readers import reader_global_landmask
 from opendrift.readers import reader_ROMS_native
 from opendrift.models.oceandrift import OceanDrift
