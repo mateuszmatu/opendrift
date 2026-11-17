@@ -56,6 +56,32 @@ class ReaderDomain(Timeable):
         lo, la = self.xy2lonlat(x, y)
         return(lo, la)
 
+    def lonlat_bounds(self, densify_pts=21):
+        """
+        Returns (appoximate) extent in lon, lat
+        """
+        # Default densify_pts is 21 - specify in case default changes
+        # This will give a more precise bbox - but may still be off in case of
+        # very large extent / weird projections.
+        # It will e.g be a little off for datasets where the pole is an interior point (polar stereographic)
+        # but should still be an improvement compared to just transforming the 'corners'.
+        # TODO: Consider adding a test for whether the pole(s) are covered by the projection.
+        if isinstance(self.proj, pyproj.Proj):
+            x1, y1, x2, y2 = self.xmin, self.ymin, self.xmax, self.ymax
+            if self.proj.crs.is_geographic:
+                if 'ob_tran' in str(self.proj4):
+                    # Perhaps also test if min, max < 2 * pi ?
+                    logger.debug('NB: Converting degrees to radians due to ob_tran srs')
+                    x1, y1, x2, y2 = np.radians((x1, y1, x2, y2))
+                else:
+                    # transform_bounds does not work well with lon in range (0, 360)
+                    # So a pragmatic fix is just to return the coords as is (same as in xy2lonlat)
+                    return x1, y1, x2, y2
+            return self.proj.transform_bounds(
+                x1, y1, x2, y2, densify_pts=densify_pts, direction="INVERSE"
+            )
+        return self.xmin, self.ymin, self.xmax, self.ymax
+
     def rotate_vectors(self, reader_x, reader_y, u_component, v_component,
                        proj_from, proj_to):
         if isinstance(u_component, list):  # Looping recursively over ensemble members
@@ -183,6 +209,8 @@ class ReaderDomain(Timeable):
                 (self.xmin, self.xmax, self.delta_x or 0, shape[0])
             outStr += '  ymin: %f   ymax: %f   step: %g   numy: %i\n' % \
                 (self.ymin, self.ymax, self.delta_y or 0, shape[1])
+        # NOTE: The representation of the 'corners' here has not been changed after
+        # introduction of the new lonlat_bounds method. Corners are still corners.
         corners = self.xy2lonlat([self.xmin, self.xmin, self.xmax, self.xmax],
                                  [self.ymax, self.ymin, self.ymax, self.ymin])
         outStr += '  Corners (lon, lat):\n'
@@ -312,11 +340,8 @@ class ReaderDomain(Timeable):
 
     def coverage_string(self):
         """Coverage of reader to be reported as string for debug output"""
-        corners = self.xy2lonlat([self.xmin, self.xmin, self.xmax, self.xmax],
-                                 [self.ymax, self.ymin, self.ymax, self.ymin])
-        return '%.2f-%.2fE, %.2f-%.2fN' % (np.min(
-            corners[0]), np.max(corners[0]), np.min(
-                corners[1]), np.max(corners[1]))
+        bbox = self.lonlat_bounds()
+        return '%.2f-%.2fE, %.2f-%.2fN' % (bbox[0], bbox[2], bbox[1], bbox[3])
 
     def check_arguments(self, variables, time, x, y, z):
         """Check validity of arguments input to method get_variables.
@@ -913,7 +938,6 @@ class Variables(ReaderDomain):
 
         lon = self.modulate_longitude(lon)
         x, y = self.lonlat2xy(lon, lat)
-
         env, env_profiles = self.get_variables_interpolated_xy(
             variables, profiles, profiles_depth, time, x, y, z, rotate_to_proj)
 

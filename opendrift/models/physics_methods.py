@@ -25,6 +25,44 @@ import pyproj
 import cmocean
 
 
+def wdf_and_cdf_from_trajectory(trajectory_dict):
+    '''Estimate wind_drift_fator and current_drift_factor based on wind and current along given trajectory
+
+    trajectory_dict: dictionary with arrays of same length of the following variables:
+    time, lon, lat, x_wind, y_wind, x_sea_water_velocity, y_sea_water_velocity
+
+    Returns array of same length minus one of the fitted wind_drift_factor
+    '''
+
+    geod = pyproj.Geod(ellps='WGS84')
+
+    time = trajectory_dict['time'][:-1]
+    delta_T = (time[1] - time[0]).total_seconds()
+    cx = trajectory_dict['x_sea_water_velocity'][:-1]
+    cy = trajectory_dict['y_sea_water_velocity'][:-1]
+    wx = trajectory_dict['x_wind'][:-1]
+    wy = trajectory_dict['y_wind'][:-1]
+
+    lon = trajectory_dict['lon']
+    lat = trajectory_dict['lat']
+    easting = np.zeros(time.shape)*np.nan
+    northing = np.zeros(time.shape)*np.nan
+    for i in range(len(lon) - 1):
+        lon1, lat1 = lon[i], lat[i]
+        lon2, lat2 = lon[i + 1], lat[i + 1]
+        proj_string = f"+proj=aeqd +lat_0={lat1.values} +lon_0={lon1.values} +x_0=0 +y_0=0"
+        local_proj = pyproj.Proj(proj_string)
+        x1, y1 = local_proj(lon1, lat1)
+        x2, y2 = local_proj(lon2, lat2)
+        easting[i] = x2 - x1
+        northing[i] = y2 - y1
+    east_vel = easting/delta_T
+    north_vel = northing/delta_T
+
+    wdf = (east_vel*wy - north_vel*wx) / (cx*wy - cy*wx)
+    cdf = (cx*north_vel - cy*east_vel) / (cx*wy - cy*wx)
+    return wdf, cdf
+
 def wind_drift_factor_from_trajectory(trajectory_dict, min_period=None):
     '''Estimate wind_drift_fator based on wind and current along given trajectory
 
@@ -709,6 +747,25 @@ class PhysicsMethods:
                     factor*ice_velocity_x,
                     factor*ice_velocity_y)
 
+    def _rotate_wind_components(self, x_wind, y_wind, angle_degrees):
+        """Rotate wind vectors clockwise by an angle (scalar or one per element).
+
+        A positive angle turns the wind to the right of its direction, and a
+        negative angle to the left, independent of hemisphere. The wind speed
+        is not changed by the rotation. Clockwise rotation matrix:
+
+            [x_rotated]   [ cos(theta)   sin(theta)] [x_wind]
+            [y_rotated] = [-sin(theta)   cos(theta)] [y_wind]
+        """
+        angle_radians = np.radians(angle_degrees)
+        cosine_of_angle = np.cos(angle_radians)
+        sine_of_angle = np.sin(angle_radians)
+        # Both new components must be calculated from the original
+        # velocity components, so that neither is overwritten before it is used again.
+        rotated_x_wind = x_wind * cosine_of_angle + y_wind * sine_of_angle
+        rotated_y_wind = -x_wind * sine_of_angle + y_wind * cosine_of_angle
+        return rotated_x_wind, rotated_y_wind
+
     def advect_wind(self, factor=1):
         # Elements at/near ocean surface (z>wind_drift_depth) are advected with given percentage
         # of wind speed. NB: Only basic Euler scheme is implemented
@@ -787,6 +844,13 @@ class PhysicsMethods:
                           % (np.sum(surface), self.num_elements_active(),
                              wind_drift_depth[0],
                              speed.min(), speed.max()))
+
+        wind_drift_angle = self.get_config('drift:wind_drift_angle')
+        if wind_drift_angle != 0:
+            # Rotate only the local copies of the wind, so that other
+            # processes reading self.environment are not affected
+            x_wind, y_wind = self._rotate_wind_components(
+                x_wind, y_wind, wind_drift_angle)
 
         self.update_positions(x_wind*wdf*factor, y_wind*wdf*factor)
 

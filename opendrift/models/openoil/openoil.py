@@ -133,9 +133,9 @@ class Oil(Lagrangian3DArray):
             'wind_drift_factor',
             {
                 'dtype':
-                np.float32,  # TODO: inherit from
+                np.float32,  # TODO: inherit from OceanDrift
                 'units':
-                '%',  # OceanDrift
+                '1',
                 'description':
                 'Elements at the ocean surface are moved by '
                 'this fraction of the wind vector, in addition to '
@@ -181,13 +181,13 @@ class Oil(Lagrangian3DArray):
                  'description': 'Biodegradation half time in days for surface oil slick'}),
         ('fraction_evaporated', {
             'dtype': np.float32,
-            'units': '%',  # TODO: should be fraction and not percent
+            'units': '1',
             'seed': False,
             'default': 0
         }),
         ('water_fraction', {
             'dtype': np.float32,
-            'units': '%',
+            'units': '1',
             'seed': False,
             'default': 0
         }),
@@ -1734,25 +1734,29 @@ class OpenOil(OceanDrift):
             kwargs['density'] = oil_density
             kwargs['viscosity'] = oil_viscosity
 
-        if 'm3_per_hour' in kwargs:
-            m3_per_hour = kwargs['m3_per_hour']
-            del kwargs['m3_per_hour']
-        else:
-            m3_per_hour = self.get_config('seed:m3_per_hour')
+        if 'm3_per_hour' in kwargs and 'mass_oil' in kwargs:
+            raise ValueError('Please specify only one of m3_per_hour (total) or mass_oil (per element)')
 
-        if 'number' in kwargs:
-            num_elements = kwargs['number']
-        else:
-            num_elements = self.get_config('seed:number')
-        time = kwargs['time']
-        if type(time) is list:
-            duration_hours = ((time[1] - time[0]).total_seconds()) / 3600
-            if duration_hours == 0:
-                duration_hours = 1.
-        else:
-            duration_hours = 1.  # For instantaneous spill, we use 1h
-        kwargs['mass_oil'] = (m3_per_hour * duration_hours / num_elements *
-                              kwargs['density'])
+        if 'mass_oil' not in kwargs:
+            if 'm3_per_hour' in kwargs:
+                m3_per_hour = kwargs['m3_per_hour']
+                del kwargs['m3_per_hour']
+            else:
+                m3_per_hour = self.get_config('seed:m3_per_hour')
+
+            if 'number' in kwargs:
+                num_elements = kwargs['number']
+            else:
+                num_elements = self.get_config('seed:number')
+            time = kwargs['time']
+            if type(time) is list:
+                duration_hours = ((time[1] - time[0]).total_seconds()) / 3600
+                if duration_hours == 0:
+                    duration_hours = 1.
+            else:
+                duration_hours = 1.  # For instantaneous spill, we use 1h
+            kwargs['mass_oil'] = (m3_per_hour * duration_hours / num_elements *
+                                  kwargs['density'])
 
         self.store_oil_seed_metadata(**kwargs)
 
