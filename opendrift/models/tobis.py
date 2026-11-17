@@ -50,7 +50,7 @@ class TobisElement(Lagrangian3DArray):
                     'default': 0}),
         ('weight', {'dtype': np.float32,
                     'units': 'mg',
-                    'default': 0.08})])
+                    'default': 0.08})]) #Not needed for Tobis
 
 
 class Tobis(OceanDrift):
@@ -153,6 +153,7 @@ class Tobis(OceanDrift):
 
         return hatch_time_fn
 
+    #NOt needed 
     def update_terminal_velocity(self, Tprofiles=None,
                                  Sprofiles=None, z_index=None):
         """Calculate terminal velocity for Pelagic Egg
@@ -265,6 +266,7 @@ class Tobis(OceanDrift):
         larvae = np.where(self.elements.phase==1)[0]
 
         if len(larvae) > 0:
+            #double check simplify ?
             s = self.elements.stage_fraction[larvae] - 1
             Lm = 40
             L0 = 7.73
@@ -330,7 +332,7 @@ class Tobis(OceanDrift):
         if self.get_config('drift:egg_advection') is False:
             self.freeze_egg()
         self.advect_ocean_current()
-
+        print(self.elements.phase)
         # Stokes drift
         self.stokes_drift()
 
